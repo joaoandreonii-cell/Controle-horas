@@ -334,17 +334,40 @@ function Sheet({ open, onClose, children, maxHeight = '90vh' }) {
 }
 
 function TimeField({ label, value, onChange }) {
+  const handleChange = (e) => {
+    let v = e.target.value.replace(/[^0-9:]/g, '');
+    if (v.length === 2 && !v.includes(':')) v = v + ':';
+    if (v.length > 5) v = v.slice(0, 5);
+    onChange(v);
+  };
+
+  const handleBlur = () => {
+    if (!value) return;
+    const clean = value.replace(/[^0-9]/g, '');
+    if (clean.length >= 3) {
+      const h = clean.slice(0, 2);
+      const m = clean.slice(2, 4);
+      const hNum = Math.min(23, parseInt(h, 10));
+      const mNum = Math.min(59, parseInt(m || '0', 10));
+      onChange(`${pad(hNum)}:${pad(mNum)}`);
+    }
+  };
+
   return (
     <div>
       <label className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium block mb-2">
         {label}
       </label>
       <input
-        type="time"
+        type="text"
+        inputMode="numeric"
+        placeholder="00:00"
+        maxLength={5}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-stone-800 border border-stone-700 rounded-xl px-4 text-stone-100 text-lg tabular-nums focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 transition appearance-none"
-        style={{ minHeight: '52px', fontSize: '18px', lineHeight: '52px', colorScheme: 'dark' }}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3.5 py-4 text-stone-100 text-xl tabular-nums focus:outline-none focus:border-amber-700/60 transition text-center tracking-widest"
+        style={{ fontFamily: "'JetBrains Mono', monospace" }}
       />
     </div>
   );
@@ -1032,7 +1055,7 @@ function TodayScreen({
             className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-stone-700 text-stone-400 text-sm hover:bg-stone-800/40 hover:text-stone-200 transition"
           >
             <Wand2 size={14} />
-            Preencher expediente padrão (07:40 → 17:30)
+            Preencher expediente padrão
           </button>
 
           {invalidTime && (
