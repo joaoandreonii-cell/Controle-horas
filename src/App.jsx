@@ -334,40 +334,17 @@ function Sheet({ open, onClose, children, maxHeight = '90vh' }) {
 }
 
 function TimeField({ label, value, onChange }) {
-  const handleChange = (e) => {
-    let v = e.target.value.replace(/[^0-9:]/g, '');
-    if (v.length === 2 && !v.includes(':')) v = v + ':';
-    if (v.length > 5) v = v.slice(0, 5);
-    onChange(v);
-  };
-
-  const handleBlur = () => {
-    if (!value) return;
-    const clean = value.replace(/[^0-9]/g, '');
-    if (clean.length >= 3) {
-      const h = clean.slice(0, 2);
-      const m = clean.slice(2, 4);
-      const hNum = Math.min(23, parseInt(h, 10));
-      const mNum = Math.min(59, parseInt(m || '0', 10));
-      onChange(`${pad(hNum)}:${pad(mNum)}`);
-    }
-  };
-
   return (
     <div>
       <label className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium block mb-2">
         {label}
       </label>
       <input
-        type="text"
-        inputMode="numeric"
-        placeholder="00:00"
-        maxLength={5}
+        type="time"
         value={value}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3.5 py-4 text-stone-100 text-xl tabular-nums focus:outline-none focus:border-amber-700/60 transition text-center tracking-widest"
-        style={{ fontFamily: "'JetBrains Mono', monospace" }}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3.5 py-3.5 text-stone-100 text-base tabular-nums focus:outline-none focus:border-amber-700/60 transition"
+        style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
       />
     </div>
   );

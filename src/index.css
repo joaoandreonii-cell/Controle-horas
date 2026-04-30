@@ -2,5 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
-* { -webkit-tap-highlight-color: transparent; }
-body { overscroll-behavior: none; }
+/* Remove highlight azul ao tocar em elementos */
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+/* Impede scroll horizontal que desalinha diálogos nativos do Android */
+html {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+body {
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
+  overscroll-behavior: none;
+}
+
+/* Garante que containers não ultrapassem a largura da tela */
+#root {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Estilo escuro para inputs de data/hora nativos */
+input[type="time"],
+input[type="date"] {
+  color-scheme: dark;
+}
