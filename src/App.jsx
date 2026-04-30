@@ -252,13 +252,33 @@ function FontStyles() {
       .animate-slide-up { animation: slide-up 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
       .animate-screen-in { animation: screen-in 0.22s ease-out; }
 
+      /* Inputs de horário — mobile-friendly */
+      input[type="time"],
+      input[type="date"] {
+        color-scheme: dark;
+        -webkit-appearance: none;
+        appearance: none;
+      }
       input[type="time"]::-webkit-calendar-picker-indicator,
       input[type="date"]::-webkit-calendar-picker-indicator {
         filter: invert(0.6);
         cursor: pointer;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        margin-right: 4px;
       }
-      input[type="time"], input[type="date"] {
-        color-scheme: dark;
+      /* Safe area iPhone com home indicator */
+      .tab-bar-safe {
+        padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+      }
+      /* Evita zoom ao focar inputs no iOS (mínimo 16px) */
+      @media (max-width: 768px) {
+        input[type="time"],
+        input[type="date"],
+        input[type="text"] {
+          font-size: 16px !important;
+        }
       }
     `}</style>
   );
@@ -323,8 +343,8 @@ function TimeField({ label, value, onChange }) {
         type="time"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3.5 py-3.5 text-stone-100 text-base tabular-nums focus:outline-none focus:border-amber-700/60 transition"
-        style={{ fontFamily: "'JetBrains Mono', monospace" }}
+        className="w-full bg-stone-800 border border-stone-700 rounded-xl px-4 text-stone-100 text-lg tabular-nums focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-600/20 transition appearance-none"
+        style={{ minHeight: '52px', fontSize: '18px', lineHeight: '52px', colorScheme: 'dark' }}
       />
     </div>
   );
@@ -382,7 +402,7 @@ function DayBadge({ kind, name }) {
 /* ─── Tab bar ─── */
 function TabBar({ current, onChange }) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-30 bg-stone-950/95 backdrop-blur-md border-t border-stone-900">
+    <div className="fixed bottom-0 left-0 right-0 z-30 bg-stone-950/95 backdrop-blur-md border-t border-stone-900 tab-bar-safe">
       <div className="max-w-md mx-auto flex">
         <TabButton
           icon={<Home size={19} />}
@@ -506,9 +526,14 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
 
   if (!day) return null;
 
+  const sm = parseHM(start);
+  const em = parseHM(end);
+
   const handleSave = () => {
     if (!start || !end) { setError('Informe entrada e saída'); return; }
-    if (parseHM(start) == null || parseHM(end) == null) { setError('Horário inválido'); return; }
+    if (sm == null || em == null) { setError('Horário inválido'); return; }
+    if (em <= sm) { setError('Saída não pode ser anterior ou igual à entrada'); return; }
+    setError('');
     onSave({ start, end });
     onClose();
   };
@@ -543,6 +568,14 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
           <Wand2 size={14} />
           Preencher expediente padrão
         </button>
+
+        {/* Aviso em tempo real quando saída <= entrada */}
+        {em != null && sm != null && em <= sm && !error && (
+          <div className="mt-3 flex items-center gap-2 text-amber-400 text-xs">
+            <AlertTriangle size={13} />
+            Saída anterior ou igual à entrada — corrija antes de salvar
+          </div>
+        )}
 
         {error && (
           <div className="mt-3 flex items-center gap-2 text-rose-400 text-xs">
@@ -900,12 +933,13 @@ function TodayScreen({
     setEnd(currentEntry?.end || '');
   }, [currentEntry?.start, currentEntry?.end]);
 
-  // Auto-save quando entrada e saída estão válidas
+  // Auto-save quando entrada e saída estão válidas e corretas
   useEffect(() => {
     if (initRef.current) { initRef.current = false; return; }
     const sm = parseHM(start);
     const em = parseHM(end);
     if (sm != null && em != null) {
+      if (em <= sm) return; // não salva se saída anterior ou igual à entrada
       const same = currentEntry && currentEntry.start === start && currentEntry.end === end;
       if (!same) {
         onSaveEntry(todayStr, { start, end });
@@ -915,6 +949,11 @@ function TodayScreen({
       }
     }
   }, [start, end]); // eslint-disable-line
+
+  // Aviso de saída inválida na tela Hoje
+  const todaySm = parseHM(start);
+  const todayEm = parseHM(end);
+  const invalidTime = todaySm != null && todayEm != null && todayEm <= todaySm;
 
   const todayOT = useMemo(() => {
     const sm = parseHM(start);
@@ -996,7 +1035,14 @@ function TodayScreen({
             Preencher expediente padrão (07:40 → 17:30)
           </button>
 
-          {hasEntry && (
+          {invalidTime && (
+            <div className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-rose-950/50 border border-rose-900/60 text-rose-300 text-xs">
+              <AlertTriangle size={13} className="flex-shrink-0" />
+              Saída não pode ser anterior ou igual à entrada
+            </div>
+          )}
+
+          {hasEntry && !invalidTime && (
             <button
               onClick={handleClear}
               className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-stone-500 text-xs hover:text-rose-400 transition"
@@ -1346,7 +1392,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 pb-20"
+    <div className="min-h-screen bg-stone-950 text-stone-100 pb-24"
          style={{ fontFamily: "'Manrope', sans-serif" }}>
       <FontStyles />
 
