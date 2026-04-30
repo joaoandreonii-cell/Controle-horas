@@ -187,21 +187,21 @@ const STORAGE_KEY = 'controle_horas_v2';
 
 async function loadData() {
   try {
-    const r = await window.storage.get(STORAGE_KEY);
-    if (r) return JSON.parse(r.value);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
   } catch (e) { /* ok */ }
 
   // Tenta migrar do v1
   try {
-    const old = await window.storage.get('controle_horas_v1');
-    if (old) {
-      const parsed = JSON.parse(old.value);
+    const oldRaw = localStorage.getItem('controle_horas_v1');
+    if (oldRaw) {
+      const parsed = JSON.parse(oldRaw);
       const migrated = {
         entries: parsed.entries || {},
         holidays: parsed.customHolidays || [],
         initializedYears: [],
       };
-      await window.storage.set(STORAGE_KEY, JSON.stringify(migrated));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
       return migrated;
     }
   } catch (e) { /* ok */ }
@@ -211,7 +211,7 @@ async function loadData() {
 
 async function saveData(data) {
   try {
-    await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (e) {
     console.error('Erro ao salvar:', e);
   }
