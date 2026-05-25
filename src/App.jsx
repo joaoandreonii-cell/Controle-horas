@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight, Settings, X, Plus, Copy,
   Check, Trash2, Calendar, Sparkles, AlertTriangle, Wand2,
-  Home, CalendarDays, Pencil,
+  Home, CalendarDays, Pencil, Download, Upload, Moon,
 } from 'lucide-react';
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -102,27 +102,32 @@ const formatDurationLong = (mins) => {
   return `${pad(h)}:${pad(m)}`;
 };
 
-const EXP1_START = 7 * 60 + 40;
-const EXP1_END = 12 * 60;
-const EXP2_START = 13 * 60;
-const EXP2_END = 17 * 60 + 30;
-const LUNCH_START = 12 * 60;
-const LUNCH_END = 13 * 60;
+const EXP_START = 7 * 60 + 40;   // 07:40
+const EXP_END = 17 * 60 + 30;    // 17:30
 const NIGHT_START = 23 * 60;
 const NIGHT_END = 5 * 60;
 
-function calculateOvertime(entryDateStr, startMin, endMin, holidaysSet) {
+const DEFAULT_LUNCH = { start: '12:00', end: '13:00' };
+const DEFAULT_SETTINGS = { lunch: DEFAULT_LUNCH };
+
+function calculateOvertime(entryDateStr, startMin, endMin, holidaysSet, lunchCfg, breaks) {
   let d50 = 0, d100 = 0, n50 = 0, n100 = 0;
   let adjustedEnd = endMin;
   if (endMin <= startMin) adjustedEnd = endMin + 24 * 60;
 
   const entryDate = parseDate(entryDateStr);
 
-  for (let t = startMin; t < adjustedEnd; t++) {
+  outer: for (let t = startMin; t < adjustedEnd; t++) {
     const dayOffset = Math.floor(t / 1440);
     const minuteOfDay = t - dayOffset * 1440;
 
-    if (minuteOfDay >= LUNCH_START && minuteOfDay < LUNCH_END) continue;
+    if (lunchCfg && minuteOfDay >= lunchCfg.start && minuteOfDay < lunchCfg.end) continue;
+
+    if (breaks) {
+      for (const b of breaks) {
+        if (minuteOfDay >= b.start && minuteOfDay < b.end) continue outer;
+      }
+    }
 
     const actualDate = addDays(entryDate, dayOffset);
     const dow = actualDate.getDay();
@@ -140,10 +145,7 @@ function calculateOvertime(entryDateStr, startMin, endMin, holidaysSet) {
     } else if (isSaturday) {
       if (isNight) n50++; else d50++;
     } else {
-      const inExp =
-        (minuteOfDay >= EXP1_START && minuteOfDay < EXP1_END) ||
-        (minuteOfDay >= EXP2_START && minuteOfDay < EXP2_END);
-      if (inExp) continue;
+      if (minuteOfDay >= EXP_START && minuteOfDay < EXP_END) continue;
       if (isNight) n50++; else d50++;
     }
   }
@@ -183,7 +185,7 @@ function getDefaultRefMonth() {
    STORAGE + MIGRATION
    ═════════════════════════════════════════════════════════════════════════ */
 
-const STORAGE_KEY = 'controle_horas_v2';
+const STORAGE_KEY = 'controle_horas_v3';
 
 async function loadData() {
   try {
@@ -191,29 +193,51 @@ async function loadData() {
     if (raw) return JSON.parse(raw);
   } catch (e) { /* ok */ }
 
-  // Tenta migrar do v1
+  // Tenta migrar do v2
   try {
-    const oldRaw = localStorage.getItem('controle_horas_v1');
-    if (oldRaw) {
-      const parsed = JSON.parse(oldRaw);
+    const v2Raw = localStorage.getItem('controle_horas_v2');
+    if (v2Raw) {
+      const parsed = JSON.parse(v2Raw);
       const migrated = {
         entries: parsed.entries || {},
-        holidays: parsed.customHolidays || [],
-        initializedYears: [],
+        holidays: parsed.holidays || [],
+        initializedYears: parsed.initializedYears || [],
+        settings: DEFAULT_SETTINGS,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      localStorage.removeItem('controle_horas_v2');
+      localStorage.removeItem('controle_horas_v1');
       return migrated;
     }
   } catch (e) { /* ok */ }
 
-  return { entries: {}, holidays: [], initializedYears: [] };
+  // Tenta migrar do v1
+  try {
+    const v1Raw = localStorage.getItem('controle_horas_v1');
+    if (v1Raw) {
+      const parsed = JSON.parse(v1Raw);
+      const migrated = {
+        entries: parsed.entries || {},
+        holidays: parsed.customHolidays || [],
+        initializedYears: [],
+        settings: DEFAULT_SETTINGS,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      localStorage.removeItem('controle_horas_v1');
+      return migrated;
+    }
+  } catch (e) { /* ok */ }
+
+  return { entries: {}, holidays: [], initializedYears: [], settings: DEFAULT_SETTINGS };
 }
 
-async function saveData(data) {
+function saveData(data) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    return true;
   } catch (e) {
     console.error('Erro ao salvar:', e);
+    return false;
   }
 }
 
@@ -334,6 +358,12 @@ function Sheet({ open, onClose, children, maxHeight = '90vh' }) {
 }
 
 function TimeField({ label, value, onChange }) {
+  const handleFocus = () => {
+    if (!value) {
+      const now = new Date();
+      onChange(`${pad(now.getHours())}:${pad(now.getMinutes())}`);
+    }
+  };
   return (
     <div>
       <label className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium block mb-2">
@@ -343,6 +373,7 @@ function TimeField({ label, value, onChange }) {
         type="time"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={handleFocus}
         className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3.5 py-3.5 text-stone-100 text-base tabular-nums focus:outline-none focus:border-amber-700/60 transition"
         style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
       />
@@ -441,6 +472,7 @@ function DayRow({ day, entry, ot, isHoliday, holidayName, isToday, onClick }) {
   const isSunday = dow === 0;
   const isSaturday = dow === 6;
   const is100Day = isSunday || isHoliday;
+  const breaksCount = entry?.breaks?.length || 0;
 
   return (
     <button
@@ -467,9 +499,21 @@ function DayRow({ day, entry, ot, isHoliday, holidayName, isToday, onClick }) {
 
         <div className="flex-1 min-w-0">
           {entry?.start && entry?.end ? (
-            <div className="text-sm text-stone-200 tabular-nums"
-                 style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-              {entry.start} <span className="text-stone-600">→</span> {entry.end}
+            <div>
+              <div className="text-sm text-stone-200 tabular-nums"
+                   style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                {entry.start} <span className="text-stone-600">→</span> {entry.end}
+              </div>
+              {breaksCount > 0 && (
+                <div className="text-[10px] text-stone-500 mt-0.5">
+                  + {breaksCount} pausa{breaksCount > 1 ? 's' : ''}
+                </div>
+              )}
+              {entry?.note && (
+                <div className="text-[10px] text-stone-500 mt-0.5 truncate italic max-w-[180px]">
+                  {entry.note}
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-sm text-stone-500 italic">tocar para lançar</div>
@@ -511,15 +555,19 @@ function DayRow({ day, entry, ot, isHoliday, holidayName, isToday, onClick }) {
 }
 
 /* ─── Editor de entrada (sheet) ─── */
-function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave, onDelete }) {
+function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave, onDelete, lunchLabel }) {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
+  const [breaks, setBreaks] = useState([]);
+  const [note, setNote] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (open) {
       setStart(entry?.start || '');
       setEnd(entry?.end || '');
+      setBreaks(entry?.breaks || []);
+      setNote(entry?.note || '');
       setError('');
     }
   }, [open, entry]);
@@ -528,17 +576,34 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
 
   const sm = parseHM(start);
   const em = parseHM(end);
+  const isNightShift = sm != null && em != null && em < sm;
 
   const handleSave = () => {
     if (!start || !end) { setError('Informe entrada e saída'); return; }
     if (sm == null || em == null) { setError('Horário inválido'); return; }
-    if (em <= sm) { setError('Saída não pode ser anterior ou igual à entrada'); return; }
+    if (em === sm) { setError('Entrada e saída não podem ser iguais'); return; }
+    for (const b of breaks) {
+      if (!b.start || !b.end) { setError('Preencha todos os campos das pausas'); return; }
+      const bs = parseHM(b.start);
+      const be = parseHM(b.end);
+      if (bs == null || be == null) { setError('Horário de pausa inválido'); return; }
+      if (be <= bs) { setError('Fim da pausa deve ser após o início'); return; }
+    }
     setError('');
-    onSave({ start, end });
+    const validBreaks = breaks.filter(b => b.start && b.end);
+    const payload = { start, end };
+    if (validBreaks.length > 0) payload.breaks = validBreaks;
+    if (note.trim()) payload.note = note.trim();
+    onSave(payload);
     onClose();
   };
 
   const fillStandard = () => { setStart('07:40'); setEnd('17:30'); };
+
+  const addBreak = () => setBreaks([...breaks, { start: '', end: '' }]);
+  const updateBreak = (i, field, val) =>
+    setBreaks(breaks.map((b, idx) => idx === i ? { ...b, [field]: val } : b));
+  const removeBreak = (i) => setBreaks(breaks.filter((_, idx) => idx !== i));
 
   const dow = day.getDay();
   const badgeKind = isHoliday ? 'holiday' : (dow === 0 ? 'sunday' : (dow === 6 ? 'saturday' : null));
@@ -569,11 +634,17 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
           Preencher expediente padrão
         </button>
 
-        {/* Aviso em tempo real quando saída <= entrada */}
-        {em != null && sm != null && em <= sm && !error && (
+        {isNightShift && !error && (
+          <div className="mt-3 flex items-center gap-2 text-indigo-400 text-xs">
+            <Moon size={13} />
+            Turno noturno — cruza meia-noite
+          </div>
+        )}
+
+        {em != null && sm != null && em === sm && !error && (
           <div className="mt-3 flex items-center gap-2 text-amber-400 text-xs">
             <AlertTriangle size={13} />
-            Saída anterior ou igual à entrada — corrija antes de salvar
+            Entrada e saída não podem ser iguais
           </div>
         )}
 
@@ -583,8 +654,64 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
           </div>
         )}
 
-        <div className="mt-4 text-[11.5px] text-stone-500 leading-relaxed">
-          O período entre <span className="text-stone-400">12:00</span> e <span className="text-stone-400">13:00</span> será descontado automaticamente como almoço quando estiver dentro do turno.
+        {/* Pausas extras */}
+        <div className="mt-4 pt-4 border-t border-stone-800/40">
+          <div className="text-[10.5px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-3">
+            Pausas extras
+          </div>
+
+          {breaks.map((b, i) => (
+            <div key={i} className="flex items-center gap-2 mb-2">
+              <input
+                type="time"
+                value={b.start}
+                onChange={(e) => updateBreak(i, 'start', e.target.value)}
+                className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
+                style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+              />
+              <span className="text-stone-600 text-xs">→</span>
+              <input
+                type="time"
+                value={b.end}
+                onChange={(e) => updateBreak(i, 'end', e.target.value)}
+                className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
+                style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+              />
+              <button
+                onClick={() => removeBreak(i)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-500 hover:text-rose-400 hover:bg-stone-800 transition"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+
+          <button
+            onClick={addBreak}
+            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-stone-700/60 text-stone-500 text-xs hover:bg-stone-800/40 hover:text-stone-300 transition"
+          >
+            <Plus size={12} />
+            Adicionar pausa
+          </button>
+        </div>
+
+        {/* Observações */}
+        <div className="mt-4">
+          <label className="text-[10.5px] uppercase tracking-[0.14em] text-stone-500 font-medium block mb-2">
+            Observações
+          </label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Ex: viagem a campo, plantão..."
+            rows={2}
+            className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3.5 py-3 text-stone-100 text-sm focus:outline-none focus:border-amber-700/60 transition resize-none"
+            style={{ fontFamily: "'Manrope', sans-serif" }}
+          />
+        </div>
+
+        <div className="mt-3 text-[11.5px] text-stone-500 leading-relaxed">
+          Almoço <span className="text-stone-400">{lunchLabel}</span> descontado automaticamente quando estiver dentro do turno.
         </div>
 
         <div className="mt-6 flex gap-2.5">
@@ -701,12 +828,23 @@ function HolidayItem({ holiday, isEditing, onStartEdit, onCancelEdit, onSubmit, 
   );
 }
 
-/* ─── Settings sheet (lista completa de feriados) ─── */
-function SettingsSheet({ open, onClose, holidays, onUpdate, onAdd, onRemove }) {
+/* ─── Settings sheet ─── */
+function SettingsSheet({ open, onClose, holidays, settings, onUpdate, onAdd, onRemove, onUpdateSettings, onExportJSON, onImportJSON }) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
-  const [editingIndex, setEditingIndex] = useState(null); // null | -1 (add) | number
+  const [editingIndex, setEditingIndex] = useState(null);
   const [draftAdd, setDraftAdd] = useState({ date: '', name: '' });
+  const fileInputRef = useRef(null);
+
+  const [lunchStart, setLunchStart] = useState(settings?.lunch?.start || '12:00');
+  const [lunchEnd, setLunchEnd] = useState(settings?.lunch?.end || '13:00');
+
+  useEffect(() => {
+    if (open) {
+      setLunchStart(settings?.lunch?.start || '12:00');
+      setLunchEnd(settings?.lunch?.end || '13:00');
+    }
+  }, [open, settings]);
 
   useEffect(() => {
     if (!open) {
@@ -724,6 +862,16 @@ function SettingsSheet({ open, onClose, holidays, onUpdate, onAdd, onRemove }) {
 
   const navigateYear = (delta) => setYear(year + delta);
 
+  const handleLunchChange = (field, value) => {
+    const newStart = field === 'start' ? value : lunchStart;
+    const newEnd = field === 'end' ? value : lunchEnd;
+    if (field === 'start') setLunchStart(value);
+    else setLunchEnd(value);
+    if (parseHM(newStart) != null && parseHM(newEnd) != null) {
+      onUpdateSettings({ ...settings, lunch: { start: newStart, end: newEnd } });
+    }
+  };
+
   const handleStartAdd = () => {
     const fallbackDate = `${year}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
     setDraftAdd({ date: fallbackDate, name: '' });
@@ -732,6 +880,10 @@ function SettingsSheet({ open, onClose, holidays, onUpdate, onAdd, onRemove }) {
 
   const handleSubmitAdd = ({ date, name }) => {
     if (!date || !name.trim()) return;
+    if (holidays.some(h => h.date === date)) {
+      alert('Já existe um feriado nesta data.');
+      return;
+    }
     onAdd({ date, name: name.trim() });
     setEditingIndex(null);
     setDraftAdd({ date: '', name: '' });
@@ -749,6 +901,27 @@ function SettingsSheet({ open, onClose, holidays, onUpdate, onAdd, onRemove }) {
     setEditingIndex(null);
   };
 
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        if (!imported.entries || !imported.holidays) {
+          alert('Arquivo inválido — campos obrigatórios ausentes.');
+          return;
+        }
+        if (!window.confirm('Isso substituirá todos os dados atuais. Continuar?')) return;
+        onImportJSON(imported);
+      } catch {
+        alert('Erro ao ler o arquivo JSON.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   return (
     <Sheet open={open} onClose={onClose} maxHeight="92vh">
       <div className="px-6 pt-8 pb-6">
@@ -758,7 +931,7 @@ function SettingsSheet({ open, onClose, holidays, onUpdate, onAdd, onRemove }) {
               configurações
             </div>
             <div className="text-2xl text-stone-100 mt-1" style={{ fontFamily: "'Fraunces', serif" }}>
-              Feriados
+              Ajustes
             </div>
           </div>
           <button
@@ -769,82 +942,153 @@ function SettingsSheet({ open, onClose, holidays, onUpdate, onAdd, onRemove }) {
           </button>
         </div>
 
-        <p className="text-[12.5px] text-stone-400 leading-relaxed mb-5">
-          Os feriados nacionais e municipais de Catanduvas/SC já vêm preenchidos. Toque em qualquer um para editar ou remover. Use o botão abaixo para adicionar novos.
-        </p>
-
-        {/* Year navigator */}
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => navigateYear(-1)}
-            className="w-9 h-9 rounded-full bg-stone-900 border border-stone-800 hover:bg-stone-800 flex items-center justify-center text-stone-400"
-            aria-label="Ano anterior"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <div className="flex-1 text-center">
-            <div className="text-2xl text-stone-100 tabular-nums leading-none"
-                 style={{ fontFamily: "'Fraunces', serif" }}>
-              {year}
+        {/* Almoço */}
+        <div className="mb-6">
+          <div className="text-[10.5px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-3">
+            Horário de almoço
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase tracking-[0.12em] text-stone-600 block mb-1.5">Início</label>
+              <input
+                type="time"
+                value={lunchStart}
+                onChange={(e) => handleLunchChange('start', e.target.value)}
+                className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3 py-2.5 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
+                style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+              />
             </div>
-            <div className="text-[10px] uppercase tracking-[0.16em] text-stone-500 mt-1">
-              {yearHolidays.length} feriado{yearHolidays.length === 1 ? '' : 's'}
+            <div>
+              <label className="text-[10px] uppercase tracking-[0.12em] text-stone-600 block mb-1.5">Fim</label>
+              <input
+                type="time"
+                value={lunchEnd}
+                onChange={(e) => handleLunchChange('end', e.target.value)}
+                className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3 py-2.5 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
+                style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+              />
             </div>
           </div>
-          <button
-            onClick={() => navigateYear(1)}
-            className="w-9 h-9 rounded-full bg-stone-900 border border-stone-800 hover:bg-stone-800 flex items-center justify-center text-stone-400"
-            aria-label="Próximo ano"
-          >
-            <ChevronRight size={16} />
-          </button>
+          <div className="text-[10.5px] text-stone-600 mt-2">
+            Descontado automaticamente se o turno cruzar este horário.
+          </div>
         </div>
 
-        {/* Add form ou botão */}
-        {editingIndex === -1 ? (
-          <div className="mb-3">
-            <HolidayItem
-              holiday={draftAdd}
-              isEditing={true}
-              onCancelEdit={() => { setEditingIndex(null); setDraftAdd({ date: '', name: '' }); }}
-              onSubmit={handleSubmitAdd}
-              onDelete={null}
+        {/* Feriados */}
+        <div className="mb-6 pt-5 border-t border-stone-800/60">
+          <div className="text-[10.5px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
+            Feriados
+          </div>
+          <p className="text-[12px] text-stone-400 leading-relaxed mb-4">
+            Os feriados nacionais e municipais de Catanduvas/SC já vêm preenchidos. Toque em qualquer um para editar ou remover.
+          </p>
+
+          {/* Year navigator */}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => navigateYear(-1)}
+              className="w-9 h-9 rounded-full bg-stone-900 border border-stone-800 hover:bg-stone-800 flex items-center justify-center text-stone-400"
+              aria-label="Ano anterior"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <div className="flex-1 text-center">
+              <div className="text-2xl text-stone-100 tabular-nums leading-none"
+                   style={{ fontFamily: "'Fraunces', serif" }}>
+                {year}
+              </div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-stone-500 mt-1">
+                {yearHolidays.length} feriado{yearHolidays.length === 1 ? '' : 's'}
+              </div>
+            </div>
+            <button
+              onClick={() => navigateYear(1)}
+              className="w-9 h-9 rounded-full bg-stone-900 border border-stone-800 hover:bg-stone-800 flex items-center justify-center text-stone-400"
+              aria-label="Próximo ano"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          {/* Add form ou botão */}
+          {editingIndex === -1 ? (
+            <div className="mb-3">
+              <HolidayItem
+                holiday={draftAdd}
+                isEditing={true}
+                onCancelEdit={() => { setEditingIndex(null); setDraftAdd({ date: '', name: '' }); }}
+                onSubmit={handleSubmitAdd}
+                onDelete={null}
+              />
+            </div>
+          ) : (
+            <button
+              onClick={handleStartAdd}
+              className="w-full mb-3 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dashed border-stone-700 text-stone-400 text-sm hover:bg-stone-800/40 hover:text-stone-200 transition"
+            >
+              <Plus size={15} />
+              Adicionar feriado
+            </button>
+          )}
+
+          {/* Lista de feriados do ano */}
+          {yearHolidays.length === 0 && editingIndex !== -1 ? (
+            <div className="rounded-xl border border-dashed border-stone-800 p-5 text-center text-stone-500 text-xs">
+              Nenhum feriado em {year}
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {yearHolidays.map((h) => (
+                <HolidayItem
+                  key={`${h._i}-${h.date}`}
+                  holiday={h}
+                  isEditing={editingIndex === h._i}
+                  onStartEdit={() => setEditingIndex(h._i)}
+                  onCancelEdit={() => setEditingIndex(null)}
+                  onSubmit={(payload) => handleSubmitEdit(h._i, payload)}
+                  onDelete={() => handleRemove(h._i)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Dados / Backup */}
+        <div className="pt-5 border-t border-stone-800/60">
+          <div className="text-[10.5px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-3">
+            Backup de dados
+          </div>
+          <div className="space-y-2">
+            <button
+              onClick={onExportJSON}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-stone-800 text-stone-300 text-sm hover:bg-stone-800/60 transition font-medium"
+            >
+              <Download size={15} />
+              Exportar backup (JSON)
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-stone-800 text-stone-300 text-sm hover:bg-stone-800/60 transition font-medium"
+            >
+              <Upload size={15} />
+              Importar backup (JSON)
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".json"
+              className="hidden"
+              onChange={handleFileSelect}
             />
           </div>
-        ) : (
-          <button
-            onClick={handleStartAdd}
-            className="w-full mb-3 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dashed border-stone-700 text-stone-400 text-sm hover:bg-stone-800/40 hover:text-stone-200 transition"
-          >
-            <Plus size={15} />
-            Adicionar feriado
-          </button>
-        )}
-
-        {/* Lista de feriados do ano */}
-        {yearHolidays.length === 0 && editingIndex !== -1 ? (
-          <div className="rounded-xl border border-dashed border-stone-800 p-5 text-center text-stone-500 text-xs">
-            Nenhum feriado em {year}
+          <div className="text-[10px] text-stone-600 mt-2">
+            Exporte seus dados para transferir entre dispositivos ou como cópia de segurança.
           </div>
-        ) : (
-          <div className="space-y-1.5">
-            {yearHolidays.map((h) => (
-              <HolidayItem
-                key={`${h._i}-${h.date}`}
-                holiday={h}
-                isEditing={editingIndex === h._i}
-                onStartEdit={() => setEditingIndex(h._i)}
-                onCancelEdit={() => setEditingIndex(null)}
-                onSubmit={(payload) => handleSubmitEdit(h._i, payload)}
-                onDelete={() => handleRemove(h._i)}
-              />
-            ))}
-          </div>
-        )}
+        </div>
 
         <div className="mt-6 pt-5 border-t border-stone-800/60">
           <div className="text-[10px] text-stone-500 leading-relaxed">
-            <strong className="text-stone-400">Regras de cálculo:</strong> domingos e feriados = 100%, demais horas extras = 50%. Adicional noturno: 23:00 às 05:00. Almoço 12:00–13:00 sempre descontado. Período: dia 26 do mês anterior até 25 do mês de referência.
+            <strong className="text-stone-400">Regras de cálculo:</strong> domingos e feriados = 100%, demais horas extras = 50%. Adicional noturno: 23:00 às 05:00. Almoço {lunchStart}–{lunchEnd} descontado. Período: dia 26 do mês anterior até 25 do mês de referência.
           </div>
         </div>
       </div>
@@ -914,54 +1158,79 @@ function CopyModal({ open, onClose, text }) {
    ═════════════════════════════════════════════════════════════════════════ */
 
 function TodayScreen({
-  data, holidaysMap, refMonth, monthlyTotals,
+  data, holidaysMap, refMonth, monthlyTotals, lunchConfig,
   onSaveEntry, onDeleteEntry, onOpenSettings, onGoToMonth,
 }) {
-  const today = useMemo(() => new Date(), []);
+  const [today, setToday] = useState(() => new Date());
   const todayStr = formatDate(today);
   const currentEntry = data.entries[todayStr];
 
   const [start, setStart] = useState(currentEntry?.start || '');
   const [end, setEnd] = useState(currentEntry?.end || '');
+  const [breaks, setBreaks] = useState(currentEntry?.breaks || []);
+  const [note, setNote] = useState(currentEntry?.note || '');
   const [showSaved, setShowSaved] = useState(false);
   const initRef = useRef(true);
   const savedTimer = useRef(null);
+
+  // Atualiza "hoje" se o dia mudar (app aberto pela meia-noite)
+  useEffect(() => {
+    const check = setInterval(() => {
+      const now = new Date();
+      if (formatDate(now) !== formatDate(today)) setToday(now);
+    }, 60_000);
+    return () => clearInterval(check);
+  }, [today]);
 
   // Sincroniza com mudanças externas (ex: editou pelo mês)
   useEffect(() => {
     setStart(currentEntry?.start || '');
     setEnd(currentEntry?.end || '');
-  }, [currentEntry?.start, currentEntry?.end]);
+    setBreaks(currentEntry?.breaks || []);
+    setNote(currentEntry?.note || '');
+  }, [currentEntry?.start, currentEntry?.end]); // eslint-disable-line
 
-  // Auto-save quando entrada e saída estão válidas e corretas
+  // Auto-save quando entrada e saída estão válidas
   useEffect(() => {
     if (initRef.current) { initRef.current = false; return; }
     const sm = parseHM(start);
     const em = parseHM(end);
-    if (sm != null && em != null) {
-      if (em <= sm) return; // não salva se saída anterior ou igual à entrada
-      const same = currentEntry && currentEntry.start === start && currentEntry.end === end;
+    if (sm != null && em != null && em !== sm) {
+      const validBreaks = breaks.filter(b => parseHM(b.start) != null && parseHM(b.end) != null);
+      const payload = { start, end };
+      if (validBreaks.length > 0) payload.breaks = validBreaks;
+      if (note.trim()) payload.note = note.trim();
+
+      const curBreaks = currentEntry?.breaks || [];
+      const same = currentEntry && currentEntry.start === start && currentEntry.end === end &&
+        (note.trim() || '') === (currentEntry.note || '') &&
+        validBreaks.length === curBreaks.length &&
+        validBreaks.every((b, i) => b.start === curBreaks[i]?.start && b.end === curBreaks[i]?.end);
+
       if (!same) {
-        onSaveEntry(todayStr, { start, end });
+        onSaveEntry(todayStr, payload);
         setShowSaved(true);
         if (savedTimer.current) clearTimeout(savedTimer.current);
         savedTimer.current = setTimeout(() => setShowSaved(false), 1600);
       }
     }
-  }, [start, end]); // eslint-disable-line
+  }, [start, end, breaks, note]); // eslint-disable-line
 
-  // Aviso de saída inválida na tela Hoje
   const todaySm = parseHM(start);
   const todayEm = parseHM(end);
-  const invalidTime = todaySm != null && todayEm != null && todayEm <= todaySm;
+  const invalidTime = todaySm != null && todayEm != null && todayEm === todaySm;
+  const isNightShift = todaySm != null && todayEm != null && todayEm < todaySm;
 
   const todayOT = useMemo(() => {
     const sm = parseHM(start);
     const em = parseHM(end);
-    if (sm == null || em == null) return null;
+    if (sm == null || em == null || em === sm) return null;
     const set = new Set(holidaysMap.keys());
-    return calculateOvertime(todayStr, sm, em, set);
-  }, [start, end, holidaysMap, todayStr]);
+    const parsedBreaks = (breaks || [])
+      .map(b => ({ start: parseHM(b.start), end: parseHM(b.end) }))
+      .filter(b => b.start != null && b.end != null);
+    return calculateOvertime(todayStr, sm, em, set, lunchConfig, parsedBreaks);
+  }, [start, end, breaks, holidaysMap, todayStr, lunchConfig]);
 
   const dow = today.getDay();
   const isSunday = dow === 0;
@@ -971,9 +1240,15 @@ function TodayScreen({
   const badgeKind = isHoliday ? 'holiday' : (isSunday ? 'sunday' : (isSaturday ? 'saturday' : null));
 
   const fillStandard = () => { setStart('07:40'); setEnd('17:30'); };
-  const handleClear = () => { setStart(''); setEnd(''); onDeleteEntry(todayStr); };
+  const handleClear = () => { setStart(''); setEnd(''); setBreaks([]); setNote(''); onDeleteEntry(todayStr); };
+
+  const addBreak = () => setBreaks([...breaks, { start: '', end: '' }]);
+  const updateBreak = (i, field, val) =>
+    setBreaks(breaks.map((b, idx) => idx === i ? { ...b, [field]: val } : b));
+  const removeBreak = (i) => setBreaks(breaks.filter((_, idx) => idx !== i));
 
   const hasEntry = !!currentEntry?.start;
+  const lunchLabel = `${data.settings?.lunch?.start || '12:00'}–${data.settings?.lunch?.end || '13:00'}`;
 
   return (
     <div className="px-4 pt-5 max-w-md mx-auto animate-screen-in">
@@ -1038,9 +1313,78 @@ function TodayScreen({
           {invalidTime && (
             <div className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-rose-950/50 border border-rose-900/60 text-rose-300 text-xs">
               <AlertTriangle size={13} className="flex-shrink-0" />
-              Saída não pode ser anterior ou igual à entrada
+              Entrada e saída não podem ser iguais
             </div>
           )}
+
+          {isNightShift && (
+            <div className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-950/50 border border-indigo-900/40 text-indigo-300 text-xs">
+              <Moon size={13} className="flex-shrink-0" />
+              Turno noturno — cruza meia-noite
+            </div>
+          )}
+
+          {/* Pausas extras */}
+          {(breaks.length > 0 || (start && end && !invalidTime)) && (
+            <div className="mt-4 pt-3 border-t border-stone-800/30">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
+                Pausas extras
+              </div>
+              {breaks.map((b, i) => (
+                <div key={i} className="flex items-center gap-2 mb-2">
+                  <input
+                    type="time"
+                    value={b.start}
+                    onChange={(e) => updateBreak(i, 'start', e.target.value)}
+                    className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
+                    style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+                  />
+                  <span className="text-stone-600 text-xs">→</span>
+                  <input
+                    type="time"
+                    value={b.end}
+                    onChange={(e) => updateBreak(i, 'end', e.target.value)}
+                    className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
+                    style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+                  />
+                  <button
+                    onClick={() => removeBreak(i)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-500 hover:text-rose-400 hover:bg-stone-800 transition"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={addBreak}
+                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-stone-700/60 text-stone-500 text-xs hover:bg-stone-800/40 hover:text-stone-300 transition"
+              >
+                <Plus size={12} />
+                Adicionar pausa
+              </button>
+            </div>
+          )}
+
+          {/* Observações */}
+          {(start && end && !invalidTime) && (
+            <div className="mt-3">
+              <label className="text-[10px] uppercase tracking-[0.14em] text-stone-500 font-medium block mb-1.5">
+                Observações
+              </label>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Ex: viagem a campo, plantão..."
+                rows={2}
+                className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3 py-2.5 text-stone-100 text-sm focus:outline-none focus:border-amber-700/60 transition resize-none"
+                style={{ fontFamily: "'Manrope', sans-serif" }}
+              />
+            </div>
+          )}
+
+          <div className="mt-3 text-[11px] text-stone-600">
+            Almoço {lunchLabel} descontado automaticamente.
+          </div>
 
           {hasEntry && !invalidTime && (
             <button
@@ -1120,6 +1464,7 @@ function MonthScreen({
 
   const monthLabel = MONTH_FULL[refMonth.month - 1];
   const periodLabel = `${pad(start.getDate())} ${MONTH_SHORT[start.getMonth()]} → ${pad(end.getDate())} ${MONTH_SHORT[end.getMonth()]}`;
+  const lunchLabel = `${data.settings?.lunch?.start || '12:00'}–${data.settings?.lunch?.end || '13:00'}`;
 
   return (
     <div className="px-4 pt-5 max-w-md mx-auto animate-screen-in">
@@ -1228,7 +1573,7 @@ function MonthScreen({
 
       <div className="mt-8 pt-5 border-t border-stone-900 text-center">
         <div className="text-[10px] text-stone-600 leading-relaxed px-6">
-          Expediente 07:40–12:00 e 13:00–17:30 · Almoço 1h descontado · Adicional noturno 23:00–05:00
+          Expediente 07:40–12:00 e 13:00–17:30 · Almoço {lunchLabel} descontado · Adicional noturno 23:00–05:00
         </div>
       </div>
     </div>
@@ -1242,8 +1587,9 @@ function MonthScreen({
 export default function App() {
   const [currentTab, setCurrentTab] = useState('today');
   const [refMonth, setRefMonth] = useState(getDefaultRefMonth);
-  const [data, setData] = useState({ entries: {}, holidays: [], initializedYears: [] });
+  const [data, setData] = useState({ entries: {}, holidays: [], initializedYears: [], settings: DEFAULT_SETTINGS });
   const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState(false);
 
   const [editingDate, setEditingDate] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -1272,7 +1618,21 @@ export default function App() {
     }
   }, [refMonth, loading]); // eslint-disable-line
 
-  const persist = (newData) => { setData(newData); saveData(newData); };
+  const persist = (newData) => {
+    setData(newData);
+    if (!saveData(newData)) {
+      setSaveError(true);
+      setTimeout(() => setSaveError(false), 5000);
+    }
+  };
+
+  const lunchConfig = useMemo(() => {
+    const s = data.settings?.lunch;
+    return {
+      start: parseHM(s?.start || '12:00') ?? 720,
+      end: parseHM(s?.end || '13:00') ?? 780,
+    };
+  }, [data.settings?.lunch?.start, data.settings?.lunch?.end]); // eslint-disable-line
 
   const { start: periodStart, end: periodEnd } = useMemo(
     () => getPeriod(refMonth.year, refMonth.month),
@@ -1296,8 +1656,11 @@ export default function App() {
       const e = data.entries[ds];
       if (!e || !e.start || !e.end) { ots[ds] = null; continue; }
       const sm = parseHM(e.start); const em = parseHM(e.end);
-      if (sm == null || em == null) { ots[ds] = null; continue; }
-      const r = calculateOvertime(ds, sm, em, holidaysSet);
+      if (sm == null || em == null || em === sm) { ots[ds] = null; continue; }
+      const entryBreaks = (e.breaks || [])
+        .map(b => ({ start: parseHM(b.start), end: parseHM(b.end) }))
+        .filter(b => b.start != null && b.end != null);
+      const r = calculateOvertime(ds, sm, em, holidaysSet, lunchConfig, entryBreaks);
       d50 += r.d50; d100 += r.d100; n50 += r.n50; n100 += r.n100;
       ots[ds] = r;
     }
@@ -1305,7 +1668,7 @@ export default function App() {
       totals: { d50, d100, n50, n100, total: d50 + d100 + n50 + n100 },
       dayOTs: ots,
     };
-  }, [days, data.entries, holidaysSet]);
+  }, [days, data.entries, holidaysSet, lunchConfig]);
 
   const navigateMonth = (delta) => {
     const m = refMonth.month + delta;
@@ -1333,6 +1696,34 @@ export default function App() {
     persist({ ...data, holidays: data.holidays.filter((_, i) => i !== idx) });
   };
 
+  const updateSettings = (newSettings) => {
+    persist({ ...data, settings: newSettings });
+  };
+
+  const exportJSON = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `horas-plus-backup-${formatDate(new Date())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const importJSON = (imported) => {
+    const withDefaults = {
+      entries: imported.entries || {},
+      holidays: imported.holidays || [],
+      initializedYears: imported.initializedYears || [],
+      settings: imported.settings || DEFAULT_SETTINGS,
+    };
+    persist(withDefaults);
+  };
+
+  const lunchLabel = `${data.settings?.lunch?.start || '12:00'}–${data.settings?.lunch?.end || '13:00'}`;
+
   const buildCopyText = () => {
     const monthLabel = `${MONTH_FULL[refMonth.month - 1]} ${refMonth.year}`;
     const periodLabel = `${formatDateBR(formatDate(periodStart))} a ${formatDateBR(formatDate(periodEnd))}`;
@@ -1340,6 +1731,7 @@ export default function App() {
     const lines = [];
     lines.push(`Controle de Horas Extras — ${monthLabel}`);
     lines.push(`Período: ${periodLabel}`);
+    lines.push(`Almoço: ${lunchLabel}`);
     lines.push('');
     lines.push('═══════════════════════════════');
     lines.push(`50%  diurno    ${formatDurationLong(totals.d50).padStart(8)}`);
@@ -1363,12 +1755,14 @@ export default function App() {
       const dn = DAY_SHORT[day.getDay()];
       const isH = holidaysSet.has(ds);
       const tag = isH ? ' (feriado)' : day.getDay() === 0 ? ' (domingo)' : '';
+      const breaksInfo = e.breaks?.length ? ` [pausa ${e.breaks.map(b => `${b.start}-${b.end}`).join(', ')}]` : '';
       const parts = [];
       if (ot.d50) parts.push(`${formatDuration(ot.d50)} 50%d`);
       if (ot.n50) parts.push(`${formatDuration(ot.n50)} 50%n`);
       if (ot.d100) parts.push(`${formatDuration(ot.d100)} 100%d`);
       if (ot.n100) parts.push(`${formatDuration(ot.n100)} 100%n`);
-      lines.push(`${dnum} ${dn}${tag}  ${e.start}-${e.end}  → ${formatDuration(ot.total)}  [${parts.join(', ')}]`);
+      const noteInfo = e.note ? ` (obs: ${e.note})` : '';
+      lines.push(`${dnum} ${dn}${tag}  ${e.start}-${e.end}${breaksInfo}  → ${formatDuration(ot.total)}  [${parts.join(', ')}]${noteInfo}`);
     }
     if (!any) lines.push('  (nenhuma hora extra registrada)');
 
@@ -1396,12 +1790,20 @@ export default function App() {
          style={{ fontFamily: "'Manrope', sans-serif" }}>
       <FontStyles />
 
+      {saveError && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-rose-600 text-white text-center text-sm py-2.5 px-4 animate-fade-in">
+          <AlertTriangle size={14} className="inline mr-1.5 -mt-0.5" />
+          Erro ao salvar — armazenamento cheio. Exporte seus dados como backup.
+        </div>
+      )}
+
       {currentTab === 'today' ? (
         <TodayScreen
           data={data}
           holidaysMap={holidaysMap}
           refMonth={refMonth}
           monthlyTotals={totals}
+          lunchConfig={lunchConfig}
           onSaveEntry={saveEntry}
           onDeleteEntry={deleteEntry}
           onOpenSettings={() => setShowSettings(true)}
@@ -1433,15 +1835,20 @@ export default function App() {
         entry={editingEntry}
         onSave={(payload) => saveEntry(editingDate, payload)}
         onDelete={() => deleteEntry(editingDate)}
+        lunchLabel={lunchLabel}
       />
 
       <SettingsSheet
         open={showSettings}
         onClose={() => setShowSettings(false)}
         holidays={data.holidays}
+        settings={data.settings || DEFAULT_SETTINGS}
         onAdd={addHoliday}
         onUpdate={updateHoliday}
         onRemove={removeHoliday}
+        onUpdateSettings={updateSettings}
+        onExportJSON={exportJSON}
+        onImportJSON={importJSON}
       />
 
       <CopyModal

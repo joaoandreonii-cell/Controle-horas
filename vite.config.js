@@ -12,6 +12,7 @@ export default defineConfig({
         name: 'horas+ · Controle de Extras',
         short_name: 'horas+',
         description: 'Controle de horas extras - Catanduvas/SC',
+        lang: 'pt-BR',
         theme_color: '#0c0a09',
         background_color: '#0c0a09',
         display: 'standalone',
