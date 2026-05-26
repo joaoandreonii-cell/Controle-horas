@@ -701,19 +701,19 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
               <TimeMaskedInput
                 value={b.start}
                 onChange={(v) => updateBreak(i, 'start', v)}
-                className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
+                className="flex-1 min-w-0 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
                 style={{ fontFamily: "'JetBrains Mono', monospace" }}
               />
-              <span className="text-stone-600 text-xs">→</span>
+              <span className="text-stone-600 text-xs flex-shrink-0">→</span>
               <TimeMaskedInput
                 value={b.end}
                 onChange={(v) => updateBreak(i, 'end', v)}
-                className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
+                className="flex-1 min-w-0 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
                 style={{ fontFamily: "'JetBrains Mono', monospace" }}
               />
               <button
                 onClick={() => removeBreak(i)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-500 hover:text-rose-400 hover:bg-stone-800 transition"
+                className="w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center text-stone-500 hover:text-rose-400 hover:bg-stone-800 transition"
               >
                 <Trash2 size={13} />
               </button>
@@ -1367,19 +1367,19 @@ function TodayScreen({
                   <TimeMaskedInput
                     value={b.start}
                     onChange={(v) => updateBreak(i, 'start', v)}
-                    className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
+                    className="flex-1 min-w-0 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
                     style={{ fontFamily: "'JetBrains Mono', monospace" }}
                   />
-                  <span className="text-stone-600 text-xs">→</span>
+                  <span className="text-stone-600 text-xs flex-shrink-0">→</span>
                   <TimeMaskedInput
                     value={b.end}
                     onChange={(v) => updateBreak(i, 'end', v)}
-                    className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
+                    className="flex-1 min-w-0 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
                     style={{ fontFamily: "'JetBrains Mono', monospace" }}
                   />
                   <button
                     onClick={() => removeBreak(i)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-stone-500 hover:text-rose-400 hover:bg-stone-800 transition"
+                    className="w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center text-stone-500 hover:text-rose-400 hover:bg-stone-800 transition"
                   >
                     <Trash2 size={13} />
                   </button>
