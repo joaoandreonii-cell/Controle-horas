@@ -1421,8 +1421,8 @@ function TodayScreen({
         {todayOT && todayOT.total > 0 && (
           <div className="grid grid-cols-2 gap-2 mt-4">
             {todayOT.d50 > 0 && <StatCard label="50% diurno" value={formatDurationLong(todayOT.d50)} accentClass="bg-amber-400" />}
-            {todayOT.n50 > 0 && <StatCard label="50% noturno" value={formatDurationLong(todayOT.n50)} accentClass="bg-indigo-400" />}
             {todayOT.d100 > 0 && <StatCard label="100% diurno" value={formatDurationLong(todayOT.d100)} accentClass="bg-rose-400" />}
+            {todayOT.n50 > 0 && <StatCard label="50% noturno" value={formatDurationLong(todayOT.n50)} accentClass="bg-indigo-400" />}
             {todayOT.n100 > 0 && <StatCard label="100% noturno" value={formatDurationLong(todayOT.n100)} accentClass="bg-violet-400" />}
           </div>
         )}
@@ -1531,8 +1531,8 @@ function MonthScreen({
 
             <div className="grid grid-cols-2 gap-2 mt-5">
               <StatCard label="50% diurno" value={formatDurationLong(totals.d50)} accentClass="bg-amber-400" />
-              <StatCard label="50% noturno" value={formatDurationLong(totals.n50)} accentClass="bg-indigo-400" />
               <StatCard label="100% diurno" value={formatDurationLong(totals.d100)} accentClass="bg-rose-400" />
+              <StatCard label="50% noturno" value={formatDurationLong(totals.n50)} accentClass="bg-indigo-400" />
               <StatCard label="100% noturno" value={formatDurationLong(totals.n100)} accentClass="bg-violet-400" />
             </div>
 
