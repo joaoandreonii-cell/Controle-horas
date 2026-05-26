@@ -277,14 +277,12 @@ function FontStyles() {
       .animate-slide-up { animation: slide-up 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
       .animate-screen-in { animation: screen-in 0.22s ease-out; }
 
-      /* Inputs de horário — mobile-friendly */
-      input[type="time"],
+      /* Inputs — mobile-friendly */
       input[type="date"] {
         color-scheme: dark;
         -webkit-appearance: none;
         appearance: none;
       }
-      input[type="time"]::-webkit-calendar-picker-indicator,
       input[type="date"]::-webkit-calendar-picker-indicator {
         filter: invert(0.6);
         cursor: pointer;
@@ -299,7 +297,6 @@ function FontStyles() {
       }
       /* Evita zoom ao focar inputs no iOS (mínimo 16px) */
       @media (max-width: 768px) {
-        input[type="time"],
         input[type="date"],
         input[type="text"] {
           font-size: 16px !important;
@@ -358,25 +355,59 @@ function Sheet({ open, onClose, children, maxHeight = '90vh' }) {
   );
 }
 
-function TimeField({ label, value, onChange }) {
+function maskTime(raw) {
+  const digits = raw.replace(/\D/g, '').slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return digits.slice(0, 2) + ':' + digits.slice(2);
+}
+
+function TimeMaskedInput({ value, onChange, className, style }) {
+  const ref = useRef(null);
+  const handleChange = (e) => {
+    const masked = maskTime(e.target.value);
+    onChange(masked);
+    if (masked.length === 5) {
+      const h = parseInt(masked.slice(0, 2), 10);
+      const m = parseInt(masked.slice(3, 5), 10);
+      if (h > 23 || m > 59) onChange('');
+    }
+  };
   const handleFocus = () => {
     if (!value) {
       const now = new Date();
       onChange(`${pad(now.getHours())}:${pad(now.getMinutes())}`);
+      setTimeout(() => ref.current?.select(), 0);
+    } else {
+      setTimeout(() => ref.current?.select(), 0);
     }
   };
+  return (
+    <input
+      ref={ref}
+      type="text"
+      inputMode="numeric"
+      placeholder="--:--"
+      maxLength={5}
+      value={value}
+      onChange={handleChange}
+      onFocus={handleFocus}
+      className={className}
+      style={style}
+    />
+  );
+}
+
+function TimeField({ label, value, onChange }) {
   return (
     <div>
       <label className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium block mb-2">
         {label}
       </label>
-      <input
-        type="time"
+      <TimeMaskedInput
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={handleFocus}
+        onChange={onChange}
         className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3.5 py-3.5 text-stone-100 text-base tabular-nums focus:outline-none focus:border-amber-700/60 transition"
-        style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+        style={{ fontFamily: "'JetBrains Mono', monospace" }}
       />
     </div>
   );
@@ -663,20 +694,18 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
 
           {breaks.map((b, i) => (
             <div key={i} className="flex items-center gap-2 mb-2">
-              <input
-                type="time"
+              <TimeMaskedInput
                 value={b.start}
-                onChange={(e) => updateBreak(i, 'start', e.target.value)}
+                onChange={(v) => updateBreak(i, 'start', v)}
                 className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
-                style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
               />
               <span className="text-stone-600 text-xs">→</span>
-              <input
-                type="time"
+              <TimeMaskedInput
                 value={b.end}
-                onChange={(e) => updateBreak(i, 'end', e.target.value)}
+                onChange={(v) => updateBreak(i, 'end', v)}
                 className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
-                style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
               />
               <button
                 onClick={() => removeBreak(i)}
@@ -951,22 +980,20 @@ function SettingsSheet({ open, onClose, holidays, settings, onUpdate, onAdd, onR
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[10px] uppercase tracking-[0.12em] text-stone-600 block mb-1.5">Início</label>
-              <input
-                type="time"
+              <TimeMaskedInput
                 value={lunchStart}
-                onChange={(e) => handleLunchChange('start', e.target.value)}
+                onChange={(v) => handleLunchChange('start', v)}
                 className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3 py-2.5 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
-                style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
               />
             </div>
             <div>
               <label className="text-[10px] uppercase tracking-[0.12em] text-stone-600 block mb-1.5">Fim</label>
-              <input
-                type="time"
+              <TimeMaskedInput
                 value={lunchEnd}
-                onChange={(e) => handleLunchChange('end', e.target.value)}
+                onChange={(v) => handleLunchChange('end', v)}
                 className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3 py-2.5 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
-                style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
               />
             </div>
           </div>
@@ -1333,20 +1360,18 @@ function TodayScreen({
               </div>
               {breaks.map((b, i) => (
                 <div key={i} className="flex items-center gap-2 mb-2">
-                  <input
-                    type="time"
+                  <TimeMaskedInput
                     value={b.start}
-                    onChange={(e) => updateBreak(i, 'start', e.target.value)}
+                    onChange={(v) => updateBreak(i, 'start', v)}
                     className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
-                    style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
                   />
                   <span className="text-stone-600 text-xs">→</span>
-                  <input
-                    type="time"
+                  <TimeMaskedInput
                     value={b.end}
-                    onChange={(e) => updateBreak(i, 'end', e.target.value)}
+                    onChange={(v) => updateBreak(i, 'end', v)}
                     className="flex-1 bg-stone-800 border border-stone-700 rounded-lg px-2.5 py-2 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
-                    style={{ fontFamily: "'JetBrains Mono', monospace", colorScheme: 'dark' }}
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
                   />
                   <button
                     onClick={() => removeBreak(i)}
