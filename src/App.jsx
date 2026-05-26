@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight, Settings, X, Plus, Copy,
   Check, Trash2, Calendar, Sparkles, AlertTriangle, Wand2,
-  Home, CalendarDays, Pencil, Download, Upload, Moon,
+  Home, CalendarDays, Pencil, Download, Upload, Moon, FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
@@ -1064,14 +1065,14 @@ function SettingsSheet({ open, onClose, holidays, settings, onUpdate, onAdd, onR
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-stone-800 text-stone-300 text-sm hover:bg-stone-800/60 transition font-medium"
             >
               <Download size={15} />
-              Exportar backup (JSON)
+              Exportar backup
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-stone-800 text-stone-300 text-sm hover:bg-stone-800/60 transition font-medium"
             >
               <Upload size={15} />
-              Importar backup (JSON)
+              Importar backup
             </button>
             <input
               type="file"
@@ -1454,7 +1455,7 @@ function TodayScreen({
 
 function MonthScreen({
   data, days, dayOTs, totals, holidaysMap, refMonth,
-  onNavigateMonth, onSelectDay, onOpenSettings, onOpenCopy,
+  onNavigateMonth, onSelectDay, onOpenSettings, onOpenCopy, onExportXLSX,
 }) {
   const todayStr = formatDate(new Date());
   const { start, end } = useMemo(
@@ -1529,14 +1530,24 @@ function MonthScreen({
               <StatCard label="100% noturno" value={formatDurationLong(totals.n100)} accentClass="bg-violet-400" />
             </div>
 
-            <button
-              onClick={onOpenCopy}
-              disabled={totals.total === 0}
-              className="mt-4 w-full py-3 rounded-xl bg-stone-100/[0.04] border border-stone-800 hover:bg-stone-100/[0.07] hover:border-stone-700 transition flex items-center justify-center gap-2 text-stone-300 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Copy size={14} />
-              Exportar resumo
-            </button>
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <button
+                onClick={onOpenCopy}
+                disabled={totals.total === 0}
+                className="py-3 rounded-xl bg-stone-100/[0.04] border border-stone-800 hover:bg-stone-100/[0.07] hover:border-stone-700 transition flex items-center justify-center gap-2 text-stone-300 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Copy size={14} />
+                Copiar resumo
+              </button>
+              <button
+                onClick={onExportXLSX}
+                disabled={totals.total === 0}
+                className="py-3 rounded-xl bg-stone-100/[0.04] border border-stone-800 hover:bg-stone-100/[0.07] hover:border-stone-700 transition flex items-center justify-center gap-2 text-stone-300 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <FileSpreadsheet size={14} />
+                Exportar Excel
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -1729,21 +1740,20 @@ export default function App() {
     const periodLabel = `${formatDateBR(formatDate(periodStart))} a ${formatDateBR(formatDate(periodEnd))}`;
 
     const lines = [];
-    lines.push(`Controle de Horas Extras — ${monthLabel}`);
-    lines.push(`Período: ${periodLabel}`);
+    lines.push(`*Horas Extras — ${monthLabel}*`);
+    lines.push(periodLabel);
     lines.push(`Almoço: ${lunchLabel}`);
     lines.push('');
-    lines.push('═══════════════════════════════');
-    lines.push(`50%  diurno    ${formatDurationLong(totals.d50).padStart(8)}`);
-    lines.push(`50%  noturno   ${formatDurationLong(totals.n50).padStart(8)}`);
-    lines.push(`100% diurno    ${formatDurationLong(totals.d100).padStart(8)}`);
-    lines.push(`100% noturno   ${formatDurationLong(totals.n100).padStart(8)}`);
-    lines.push('───────────────────────────────');
-    lines.push(`TOTAL          ${formatDurationLong(totals.total).padStart(8)}`);
-    lines.push('═══════════════════════════════');
+    lines.push('*Resumo*');
+    if (totals.d50) lines.push(`  50% diurno ······ ${formatDurationLong(totals.d50)}`);
+    if (totals.n50) lines.push(`  50% noturno ····· ${formatDurationLong(totals.n50)}`);
+    if (totals.d100) lines.push(`  100% diurno ····· ${formatDurationLong(totals.d100)}`);
+    if (totals.n100) lines.push(`  100% noturno ···· ${formatDurationLong(totals.n100)}`);
+    lines.push('  ───────────────────────');
+    lines.push(`  *Total ·········· ${formatDurationLong(totals.total)}*`);
     lines.push('');
-    lines.push('Detalhamento (apenas dias com horas extras):');
-    lines.push('');
+    lines.push('*Detalhamento*');
+
     let any = false;
     for (const day of days) {
       const ds = formatDate(day);
@@ -1754,19 +1764,74 @@ export default function App() {
       const dnum = `${pad(day.getDate())}/${pad(day.getMonth() + 1)}`;
       const dn = DAY_SHORT[day.getDay()];
       const isH = holidaysSet.has(ds);
-      const tag = isH ? ' (feriado)' : day.getDay() === 0 ? ' (domingo)' : '';
-      const breaksInfo = e.breaks?.length ? ` [pausa ${e.breaks.map(b => `${b.start}-${b.end}`).join(', ')}]` : '';
+      const holidayName = holidaysMap.get(ds);
+      const tag = isH ? ` _(feriado — ${holidayName})_` : day.getDay() === 0 ? ' _(domingo)_' : '';
+
+      lines.push('');
+      lines.push(`${dnum} ${dn}${tag}`);
+
+      const breaksInfo = e.breaks?.length ? ` · pausa ${e.breaks.map(b => `${b.start}–${b.end}`).join(', ')}` : '';
+      lines.push(`  ${e.start} → ${e.end}${breaksInfo}`);
+
       const parts = [];
       if (ot.d50) parts.push(`${formatDuration(ot.d50)} 50%d`);
       if (ot.n50) parts.push(`${formatDuration(ot.n50)} 50%n`);
       if (ot.d100) parts.push(`${formatDuration(ot.d100)} 100%d`);
       if (ot.n100) parts.push(`${formatDuration(ot.n100)} 100%n`);
-      const noteInfo = e.note ? ` (obs: ${e.note})` : '';
-      lines.push(`${dnum} ${dn}${tag}  ${e.start}-${e.end}${breaksInfo}  → ${formatDuration(ot.total)}  [${parts.join(', ')}]${noteInfo}`);
+      lines.push(`  ${parts.join(' · ')} = *${formatDuration(ot.total)}*`);
+
+      if (e.note) lines.push(`  _obs: ${e.note}_`);
     }
-    if (!any) lines.push('  (nenhuma hora extra registrada)');
+    if (!any) lines.push('\n  (nenhuma hora extra registrada)');
 
     return lines.join('\n');
+  };
+
+  const exportXLSX = () => {
+    const monthLabel = `${MONTH_FULL[refMonth.month - 1]} ${refMonth.year}`;
+    const periodLabel = `${formatDateBR(formatDate(periodStart))} a ${formatDateBR(formatDate(periodEnd))}`;
+
+    const rows = [];
+    rows.push([`Controle de Horas Extras — ${monthLabel}`]);
+    rows.push([`Período: ${periodLabel}`]);
+    rows.push([`Almoço: ${lunchLabel}`]);
+    rows.push([]);
+    rows.push(['Categoria', 'Horas']);
+    rows.push(['50% diurno', formatDurationLong(totals.d50)]);
+    rows.push(['50% noturno', formatDurationLong(totals.n50)]);
+    rows.push(['100% diurno', formatDurationLong(totals.d100)]);
+    rows.push(['100% noturno', formatDurationLong(totals.n100)]);
+    rows.push(['TOTAL', formatDurationLong(totals.total)]);
+    rows.push([]);
+    rows.push(['Data', 'Dia', 'Tipo', 'Entrada', 'Saída', 'Pausas', '50%d', '50%n', '100%d', '100%n', 'Total', 'Observações']);
+
+    for (const day of days) {
+      const ds = formatDate(day);
+      const ot = dayOTs[ds];
+      const e = data.entries[ds];
+      if (!ot || ot.total === 0) continue;
+      const dnum = `${pad(day.getDate())}/${pad(day.getMonth() + 1)}`;
+      const dn = DAY_SHORT[day.getDay()];
+      const isH = holidaysSet.has(ds);
+      const tipo = isH ? 'feriado' : day.getDay() === 0 ? 'domingo' : '';
+      const pausas = e.breaks?.length ? e.breaks.map(b => `${b.start}-${b.end}`).join(', ') : '';
+      rows.push([
+        dnum, dn, tipo, e.start, e.end, pausas,
+        formatDurationLong(ot.d50), formatDurationLong(ot.n50),
+        formatDurationLong(ot.d100), formatDurationLong(ot.n100),
+        formatDurationLong(ot.total), e.note || '',
+      ]);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 10 }, { wch: 5 }, { wch: 9 }, { wch: 8 }, { wch: 8 },
+      { wch: 20 }, { wch: 7 }, { wch: 7 }, { wch: 7 }, { wch: 7 },
+      { wch: 7 }, { wch: 30 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Resumo');
+    XLSX.writeFile(wb, `horas-plus-${formatDate(new Date())}.xlsx`);
   };
 
   const editingDay = editingDate ? parseDate(editingDate) : null;
@@ -1821,6 +1886,7 @@ export default function App() {
           onSelectDay={(ds) => setEditingDate(ds)}
           onOpenSettings={() => setShowSettings(true)}
           onOpenCopy={() => setShowCopy(true)}
+          onExportXLSX={exportXLSX}
         />
       )}
 
