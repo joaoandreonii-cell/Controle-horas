@@ -108,8 +108,9 @@ const EXP_END = 17 * 60 + 30;    // 17:30
 const NIGHT_START = 23 * 60;
 const NIGHT_END = 5 * 60;
 
-const DEFAULT_LUNCH = { start: '12:00', end: '13:00' };
-const DEFAULT_SETTINGS = { lunch: DEFAULT_LUNCH };
+const LUNCH_CONFIG = { start: 720, end: 780 }; // 12:00–13:00 fixo
+const LUNCH_LABEL = '12:00–13:00';
+const DEFAULT_SETTINGS = {};
 
 function calculateOvertime(entryDateStr, startMin, endMin, holidaysSet, lunchCfg, breaks) {
   let d50 = 0, d100 = 0, n50 = 0, n100 = 0;
@@ -611,7 +612,7 @@ function DayRow({ day, entry, ot, isHoliday, holidayName, isToday, onClick }) {
 }
 
 /* ─── Editor de entrada (sheet) ─── */
-function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave, onDelete, lunchLabel }) {
+function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave, onDelete }) {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [breaks, setBreaks] = useState([]);
@@ -765,7 +766,7 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
         </div>
 
         <div className="mt-3 text-[11.5px] text-stone-500 leading-relaxed">
-          Almoço <span className="text-stone-400">{lunchLabel}</span> descontado automaticamente quando estiver dentro do turno.
+          Almoço <span className="text-stone-400">{LUNCH_LABEL}</span> descontado automaticamente quando estiver dentro do turno.
         </div>
 
         <div className="mt-6 flex gap-2.5">
@@ -883,22 +884,14 @@ function HolidayItem({ holiday, isEditing, onStartEdit, onCancelEdit, onSubmit, 
 }
 
 /* ─── Settings sheet ─── */
-function SettingsSheet({ open, onClose, holidays, settings, onUpdate, onAdd, onRemove, onUpdateSettings, onExportJSON, onImportJSON }) {
+function SettingsSheet({ open, onClose, holidays, onUpdate, onAdd, onRemove, onExportJSON, onImportJSON }) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [editingIndex, setEditingIndex] = useState(null);
   const [draftAdd, setDraftAdd] = useState({ date: '', name: '' });
   const fileInputRef = useRef(null);
 
-  const [lunchStart, setLunchStart] = useState(settings?.lunch?.start || '12:00');
-  const [lunchEnd, setLunchEnd] = useState(settings?.lunch?.end || '13:00');
 
-  useEffect(() => {
-    if (open) {
-      setLunchStart(settings?.lunch?.start || '12:00');
-      setLunchEnd(settings?.lunch?.end || '13:00');
-    }
-  }, [open, settings]);
 
   useEffect(() => {
     if (!open) {
@@ -916,15 +909,7 @@ function SettingsSheet({ open, onClose, holidays, settings, onUpdate, onAdd, onR
 
   const navigateYear = (delta) => setYear(year + delta);
 
-  const handleLunchChange = (field, value) => {
-    const newStart = field === 'start' ? value : lunchStart;
-    const newEnd = field === 'end' ? value : lunchEnd;
-    if (field === 'start') setLunchStart(value);
-    else setLunchEnd(value);
-    if (parseHM(newStart) != null && parseHM(newEnd) != null) {
-      onUpdateSettings({ ...settings, lunch: { start: newStart, end: newEnd } });
-    }
-  };
+
 
   const handleStartAdd = () => {
     const fallbackDate = `${year}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
@@ -996,35 +981,7 @@ function SettingsSheet({ open, onClose, holidays, settings, onUpdate, onAdd, onR
           </button>
         </div>
 
-        {/* Almoço */}
-        <div className="mb-6">
-          <div className="text-[10.5px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-3">
-            Horário de almoço
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] uppercase tracking-[0.12em] text-stone-600 block mb-1.5">Início</label>
-              <TimeMaskedInput
-                value={lunchStart}
-                onChange={(v) => handleLunchChange('start', v)}
-                className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3 py-2.5 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-[0.12em] text-stone-600 block mb-1.5">Fim</label>
-              <TimeMaskedInput
-                value={lunchEnd}
-                onChange={(v) => handleLunchChange('end', v)}
-                className="w-full bg-stone-800 border border-stone-700 rounded-xl px-3 py-2.5 text-stone-100 text-sm tabular-nums focus:outline-none focus:border-amber-700/60"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              />
-            </div>
-          </div>
-          <div className="text-[10.5px] text-stone-600 mt-2">
-            Descontado automaticamente se o turno cruzar este horário.
-          </div>
-        </div>
+
 
         {/* Feriados */}
         <div className="mb-6 pt-5 border-t border-stone-800/60">
@@ -1140,7 +1097,7 @@ function SettingsSheet({ open, onClose, holidays, settings, onUpdate, onAdd, onR
 
         <div className="mt-6 pt-5 border-t border-stone-800/60">
           <div className="text-[10px] text-stone-500 leading-relaxed">
-            <strong className="text-stone-400">Regras de cálculo:</strong> domingos e feriados = 100%, demais horas extras = 50%. Adicional noturno: 23:00 às 05:00. Almoço {lunchStart}–{lunchEnd} descontado. Período: dia 26 do mês anterior até 25 do mês de referência.
+            <strong className="text-stone-400">Regras de cálculo:</strong> domingos e feriados = 100%, demais horas extras = 50%. Adicional noturno: 23:00 às 05:00. Almoço {LUNCH_LABEL} descontado. Período: dia 26 do mês anterior até 25 do mês de referência.
           </div>
         </div>
       </div>
@@ -1300,7 +1257,7 @@ function TodayScreen({
   const removeBreak = (i) => setBreaks(breaks.filter((_, idx) => idx !== i));
 
   const hasEntry = !!currentEntry?.start;
-  const lunchLabel = `${data.settings?.lunch?.start || '12:00'}–${data.settings?.lunch?.end || '13:00'}`;
+
 
   return (
     <div className="px-4 pt-5 max-w-md mx-auto animate-screen-in">
@@ -1433,7 +1390,7 @@ function TodayScreen({
           )}
 
           <div className="mt-3 text-[11px] text-stone-600">
-            Almoço {lunchLabel} descontado automaticamente.
+            Almoço {LUNCH_LABEL} descontado automaticamente.
           </div>
 
           {hasEntry && !invalidTime && (
@@ -1514,7 +1471,7 @@ function MonthScreen({
 
   const monthLabel = MONTH_FULL[refMonth.month - 1];
   const periodLabel = `${pad(start.getDate())} ${MONTH_SHORT[start.getMonth()]} → ${pad(end.getDate())} ${MONTH_SHORT[end.getMonth()]}`;
-  const lunchLabel = `${data.settings?.lunch?.start || '12:00'}–${data.settings?.lunch?.end || '13:00'}`;
+
 
   return (
     <div className="px-4 pt-5 max-w-md mx-auto animate-screen-in">
@@ -1633,7 +1590,7 @@ function MonthScreen({
 
       <div className="mt-8 pt-5 border-t border-stone-900 text-center">
         <div className="text-[10px] text-stone-600 leading-relaxed px-6">
-          Expediente 07:40–12:00 e 13:00–17:30 · Almoço {lunchLabel} descontado · Adicional noturno 23:00–05:00
+          Expediente 07:40–12:00 e 13:00–17:30 · Almoço {LUNCH_LABEL} descontado · Adicional noturno 23:00–05:00
         </div>
       </div>
     </div>
@@ -1686,13 +1643,7 @@ export default function App() {
     }
   };
 
-  const lunchConfig = useMemo(() => {
-    const s = data.settings?.lunch;
-    return {
-      start: parseHM(s?.start || '12:00') ?? 720,
-      end: parseHM(s?.end || '13:00') ?? 780,
-    };
-  }, [data.settings?.lunch?.start, data.settings?.lunch?.end]); // eslint-disable-line
+  const lunchConfig = LUNCH_CONFIG;
 
   const { start: periodStart, end: periodEnd } = useMemo(
     () => getPeriod(refMonth.year, refMonth.month),
@@ -1782,7 +1733,7 @@ export default function App() {
     persist(withDefaults);
   };
 
-  const lunchLabel = `${data.settings?.lunch?.start || '12:00'}–${data.settings?.lunch?.end || '13:00'}`;
+
 
   const buildCopyText = () => {
     const monthLabel = `${MONTH_FULL[refMonth.month - 1]} ${refMonth.year}`;
@@ -1791,7 +1742,7 @@ export default function App() {
     const lines = [];
     lines.push(`*Horas Extras — ${monthLabel}*`);
     lines.push(periodLabel);
-    lines.push(`Almoço: ${lunchLabel}`);
+    lines.push(`Almoço: ${LUNCH_LABEL}`);
     lines.push('');
     lines.push('*Resumo*');
     if (totals.d50) lines.push(`  50% diurno ······ ${formatDurationLong(totals.d50)}`);
@@ -1843,7 +1794,7 @@ export default function App() {
     const rows = [];
     rows.push([`Controle de Horas Extras — ${monthLabel}`]);
     rows.push([`Período: ${periodLabel}`]);
-    rows.push([`Almoço: ${lunchLabel}`]);
+    rows.push([`Almoço: ${LUNCH_LABEL}`]);
     rows.push([]);
     rows.push(['Categoria', 'Horas']);
     rows.push(['50% diurno', formatDurationLong(totals.d50)]);
@@ -1950,18 +1901,15 @@ export default function App() {
         entry={editingEntry}
         onSave={(payload) => saveEntry(editingDate, payload)}
         onDelete={() => deleteEntry(editingDate)}
-        lunchLabel={lunchLabel}
       />
 
       <SettingsSheet
         open={showSettings}
         onClose={() => setShowSettings(false)}
         holidays={data.holidays}
-        settings={data.settings || DEFAULT_SETTINGS}
         onAdd={addHoliday}
         onUpdate={updateHoliday}
         onRemove={removeHoliday}
-        onUpdateSettings={updateSettings}
         onExportJSON={exportJSON}
         onImportJSON={importJSON}
       />
