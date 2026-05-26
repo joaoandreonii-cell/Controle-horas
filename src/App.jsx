@@ -118,6 +118,26 @@ function calculateOvertime(entryDateStr, startMin, endMin, holidaysSet, lunchCfg
 
   const entryDate = parseDate(entryDateStr);
 
+  // Calcula minutos de pausas extras que caem dentro do expediente (dias úteis).
+  // Esses minutos "estendem" o fim do expediente — o funcionário deve repor o tempo.
+  let breakMinsInSchedule = 0;
+  if (breaks) {
+    for (const b of breaks) {
+      const overlapStart = Math.max(b.start, EXP_START);
+      const overlapEnd = Math.min(b.end, EXP_END);
+      if (overlapStart < overlapEnd) breakMinsInSchedule += overlapEnd - overlapStart;
+    }
+  }
+  // Também desconta a sobreposição da pausa com o almoço (almoço já não conta como expediente)
+  if (lunchCfg && breaks) {
+    for (const b of breaks) {
+      const overlapStart = Math.max(b.start, Math.max(lunchCfg.start, EXP_START));
+      const overlapEnd = Math.min(b.end, Math.min(lunchCfg.end, EXP_END));
+      if (overlapStart < overlapEnd) breakMinsInSchedule -= overlapEnd - overlapStart;
+    }
+  }
+  const effectiveExpEnd = EXP_END + breakMinsInSchedule;
+
   outer: for (let t = startMin; t < adjustedEnd; t++) {
     const dayOffset = Math.floor(t / 1440);
     const minuteOfDay = t - dayOffset * 1440;
@@ -146,7 +166,7 @@ function calculateOvertime(entryDateStr, startMin, endMin, holidaysSet, lunchCfg
     } else if (isSaturday) {
       if (isNight) n50++; else d50++;
     } else {
-      if (minuteOfDay >= EXP_START && minuteOfDay < EXP_END) continue;
+      if (minuteOfDay >= EXP_START && minuteOfDay < effectiveExpEnd) continue;
       if (isNight) n50++; else d50++;
     }
   }
