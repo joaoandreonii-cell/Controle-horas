@@ -381,6 +381,9 @@ function TimeMaskedInput({ value, onChange, className, style }) {
       setTimeout(() => ref.current?.select(), 0);
     }
   };
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') ref.current?.blur();
+  };
   return (
     <input
       ref={ref}
@@ -391,6 +394,7 @@ function TimeMaskedInput({ value, onChange, className, style }) {
       value={value}
       onChange={handleChange}
       onFocus={handleFocus}
+      onKeyDown={handleKeyDown}
       className={className}
       style={style}
     />
