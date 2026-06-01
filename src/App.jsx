@@ -1859,7 +1859,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 pb-24"
-         style={{ fontFamily: "'Manrope', sans-serif", touchAction: 'pan-y' }}>
+         style={{ fontFamily: "'Manrope', sans-serif" }}>
       <FontStyles />
 
       {saveError && (
