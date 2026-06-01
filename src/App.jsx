@@ -349,8 +349,16 @@ function Logo() {
 function Sheet({ open, onClose, children, maxHeight = '90vh' }) {
   useEffect(() => {
     if (open) {
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = ''; };
+      const y = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${y}px`;
+      document.body.style.width = '100%';
+      return () => {
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        window.scrollTo(0, y);
+      };
     }
   }, [open]);
 
@@ -363,12 +371,11 @@ function Sheet({ open, onClose, children, maxHeight = '90vh' }) {
       />
       <div
         className="relative w-full max-w-md bg-stone-900 rounded-t-3xl border-t border-stone-800 shadow-2xl animate-slide-up overflow-hidden"
-        style={{ maxHeight }}
       >
         <div className="absolute top-0 left-0 right-0 flex justify-center pt-2.5 pointer-events-none z-10">
           <div className="w-10 h-1 bg-stone-700 rounded-full" />
         </div>
-        <div className="overflow-y-auto" style={{ maxHeight }}>
+        <div className="overflow-y-auto" style={{ maxHeight, WebkitOverflowScrolling: 'touch' }}>
           {children}
         </div>
       </div>
