@@ -638,9 +638,12 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
   const isNightShift = sm != null && em != null && em < sm;
 
   const handleSave = () => {
-    if (!start || !end) { setError('Informe entrada e saída'); return; }
-    if (sm == null || em == null) { setError('Horário inválido'); return; }
-    if (em === sm) { setError('Entrada e saída não podem ser iguais'); return; }
+    if (!start) { setError('Informe a entrada'); return; }
+    if (sm == null) { setError('Horário de entrada inválido'); return; }
+    if (end) {
+      if (em == null) { setError('Horário de saída inválido'); return; }
+      if (em === sm) { setError('Entrada e saída não podem ser iguais'); return; }
+    }
     for (const b of breaks) {
       if (!b.start || !b.end) { setError('Preencha todos os campos das pausas'); return; }
       const bs = parseHM(b.start);
@@ -649,11 +652,7 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
       if (be <= bs) { setError('Fim da pausa deve ser após o início'); return; }
     }
     setError('');
-    const validBreaks = breaks.filter(b => b.start && b.end);
-    const payload = { start, end };
-    if (validBreaks.length > 0) payload.breaks = validBreaks;
-    if (note.trim()) payload.note = note.trim();
-    onSave(payload);
+    onSave(buildEntryPayload({ start, end, breaks, note }));
     onClose();
   };
 
