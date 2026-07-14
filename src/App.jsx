@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { parseHM, entryState, buildEntryPayload, sameEntry } from './entry';
+import { refMonthForDate } from './period';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
@@ -187,15 +188,7 @@ function getDaysInPeriod(start, end) {
 }
 
 function getDefaultRefMonth() {
-  const today = new Date();
-  const day = today.getDate();
-  const m = today.getMonth() + 1;
-  const y = today.getFullYear();
-  if (day >= 26) {
-    if (m === 12) return { year: y + 1, month: 1 };
-    return { year: y, month: m + 1 };
-  }
-  return { year: y, month: m };
+  return refMonthForDate(formatDate(new Date()));
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
