@@ -1183,6 +1183,7 @@ function TodayScreen({
   const [showSaved, setShowSaved] = useState(false);
   const initRef = useRef(true);
   const savedTimer = useRef(null);
+  const lastSaved = useRef(null);
 
   // Atualiza "hoje" se o dia mudar (app aberto pela meia-noite)
   useEffect(() => {
@@ -1193,8 +1194,11 @@ function TodayScreen({
     return () => clearInterval(check);
   }, [today]);
 
-  // Sincroniza com mudanças externas (ex: editou pelo mês)
+  // Sincroniza com mudanças externas (ex: editou pelo mês).
+  // Ignora o eco da nossa própria gravação: sem isso, o rebaixamento feito pelo
+  // auto-save volta como mudança externa e limpa o campo que está sendo digitado.
   useEffect(() => {
+    if (lastSaved.current && sameEntry(currentEntry, lastSaved.current)) return;
     setStart(currentEntry?.start || '');
     setEnd(currentEntry?.end || '');
     setBreaks(currentEntry?.breaks || []);
@@ -1209,6 +1213,7 @@ function TodayScreen({
     if (!payload) return;
     if (sameEntry(currentEntry, payload)) return;
 
+    lastSaved.current = payload;
     onSaveEntry(todayStr, payload);
     setShowSaved(true);
     if (savedTimer.current) clearTimeout(savedTimer.current);
