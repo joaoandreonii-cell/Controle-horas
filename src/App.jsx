@@ -532,6 +532,7 @@ function DayRow({ day, entry, ot, isHoliday, holidayName, isToday, onClick }) {
   const isSaturday = dow === 6;
   const is100Day = isSunday || isHoliday;
   const breaksCount = entry?.breaks?.length || 0;
+  const state = entryState(entry);
 
   return (
     <button
@@ -557,11 +558,14 @@ function DayRow({ day, entry, ot, isHoliday, holidayName, isToday, onClick }) {
         </div>
 
         <div className="flex-1 min-w-0">
-          {entry?.start && entry?.end ? (
+          {state !== 'empty' ? (
             <div>
               <div className="text-sm text-stone-200 tabular-nums"
                    style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                {entry.start} <span className="text-stone-600">→</span> {entry.end}
+                {entry.start} <span className="text-stone-600">→</span>{' '}
+                {state === 'complete'
+                  ? entry.end
+                  : <span className="text-stone-600">——</span>}
               </div>
               {breaksCount > 0 && (
                 <div className="text-[10px] text-stone-500 mt-0.5">
@@ -602,6 +606,8 @@ function DayRow({ day, entry, ot, isHoliday, holidayName, isToday, onClick }) {
                 {ot.n100 > 0 && <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />}
               </div>
             </>
+          ) : state === 'partial' ? (
+            <div className="text-[10px] text-amber-400/90 uppercase tracking-wider">em aberto</div>
           ) : ot && ot.total === 0 && entry?.start ? (
             <div className="text-[10px] text-stone-600 uppercase tracking-wider">no ponto</div>
           ) : (
