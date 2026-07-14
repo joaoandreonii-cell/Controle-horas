@@ -1199,8 +1199,47 @@ function DayScreen({
   const holidayName = holidaysMap.get(dateStr);
   const badgeKind = isHoliday ? 'holiday' : (isSunday ? 'sunday' : (isSaturday ? 'saturday' : null));
 
+  // Gesto: só coordenadas, sem touchmove e sem preventDefault.
+  // Um arrasto horizontal não tem comportamento nativo para cancelar, então o
+  // gesto nunca precisa cancelar nada — e portanto não pode quebrar a rolagem
+  // vertical por toque, que três commits recentes tiveram que consertar.
+  const touchRef = useRef(null);
+
+  const handleTouchStart = (e) => {
+    if (e.touches.length > 1) { touchRef.current = null; return; }
+    const t = e.touches[0];
+    // Perto da borda lateral é o "voltar" do iOS no navegador. Em standalone
+    // não existe, mas quem usa pelo navegador sofre.
+    if (t.clientX < 24 || t.clientX > window.innerWidth - 24) { touchRef.current = null; return; }
+    // Arrastar dentro de um campo não troca o dia.
+    if (e.target.closest('input, textarea, button')) { touchRef.current = null; return; }
+    touchRef.current = { x0: t.clientX, y0: t.clientY };
+  };
+
+  const handleTouchEnd = (e) => {
+    const t0 = touchRef.current;
+    touchRef.current = null;
+    if (!t0) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - t0.x0;
+    const dy = t.clientY - t0.y0;
+    if (Math.abs(dx) <= 60 || Math.abs(dx) <= Math.abs(dy) * 2) return;
+
+    // Esquerda avança um dia, direita volta um dia.
+    const delta = dx < 0 ? 1 : -1;
+    const next = formatDate(addDays(parseDate(dateStr), delta));
+    // Passado é livre; para frente trava em hoje. Sem aviso: a ausência de
+    // movimento é o feedback, e um toast para um gesto acidental é ruído.
+    if (next > todayStr) return;
+    onSelectDate(next);
+  };
+
   return (
-    <div className="px-4 pt-5 max-w-md mx-auto animate-screen-in">
+    <div
+      className="px-4 pt-5 max-w-md mx-auto animate-screen-in"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Header */}
       <header className="flex items-center justify-between mb-7">
         <Logo />
