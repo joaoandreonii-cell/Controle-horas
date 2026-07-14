@@ -1166,22 +1166,13 @@ function CopyModal({ open, onClose, text }) {
    TELAS
    ═════════════════════════════════════════════════════════════════════════ */
 
-function TodayScreen({
-  data, holidaysMap, refMonth, monthlyTotals, lunchConfig,
+function DayScreen({
+  data, holidaysMap, refMonth, monthlyTotals, lunchConfig, dataVersion,
   onSaveEntry, onDeleteEntry, onOpenSettings, onGoToMonth,
 }) {
   const [today, setToday] = useState(() => new Date());
   const todayStr = formatDate(today);
-  const currentEntry = data.entries[todayStr];
-
-  const [start, setStart] = useState(currentEntry?.start || '');
-  const [end, setEnd] = useState(currentEntry?.end || '');
-  const [breaks, setBreaks] = useState(currentEntry?.breaks || []);
-  const [note, setNote] = useState(currentEntry?.note || '');
-  const [showSaved, setShowSaved] = useState(false);
-  const initRef = useRef(true);
-  const savedTimer = useRef(null);
-  const lastSaved = useRef(null);
+  const dateStr = todayStr;
 
   // Atualiza "hoje" se o dia mudar (app aberto pela meia-noite)
   useEffect(() => {
@@ -1192,66 +1183,13 @@ function TodayScreen({
     return () => clearInterval(check);
   }, [today]);
 
-  // Sincroniza com mudanças externas (ex: editou pelo mês).
-  // Ignora o eco da nossa própria gravação: sem isso, o rebaixamento feito pelo
-  // auto-save volta como mudança externa e limpa o campo que está sendo digitado.
-  useEffect(() => {
-    if (lastSaved.current && sameEntry(currentEntry, lastSaved.current)) return;
-    setStart(currentEntry?.start || '');
-    setEnd(currentEntry?.end || '');
-    setBreaks(currentEntry?.breaks || []);
-    setNote(currentEntry?.note || '');
-  }, [currentEntry?.start, currentEntry?.end]); // eslint-disable-line
-
-  // Auto-save: grava a entrada assim que ela for válida, mesmo sem a saída.
-  // Apagar a saída de um dia completo rebaixa o dia para "em aberto".
-  useEffect(() => {
-    if (initRef.current) { initRef.current = false; return; }
-    const payload = buildEntryPayload({ start, end, breaks, note });
-    if (!payload) return;
-    if (sameEntry(currentEntry, payload)) return;
-
-    lastSaved.current = payload;
-    onSaveEntry(todayStr, payload);
-    setShowSaved(true);
-    if (savedTimer.current) clearTimeout(savedTimer.current);
-    savedTimer.current = setTimeout(() => setShowSaved(false), 1600);
-  }, [start, end, breaks, note]); // eslint-disable-line
-
-  const todaySm = parseHM(start);
-  const todayEm = parseHM(end);
-  const invalidTime = todaySm != null && todayEm != null && todayEm === todaySm;
-  const isNightShift = todaySm != null && todayEm != null && todayEm < todaySm;
-  const missingEnd = todaySm != null && !end;
-
-  const todayOT = useMemo(() => {
-    const sm = parseHM(start);
-    const em = parseHM(end);
-    if (sm == null || em == null || em === sm) return null;
-    const set = new Set(holidaysMap.keys());
-    const parsedBreaks = (breaks || [])
-      .map(b => ({ start: parseHM(b.start), end: parseHM(b.end) }))
-      .filter(b => b.start != null && b.end != null);
-    return calculateOvertime(todayStr, sm, em, set, lunchConfig, parsedBreaks);
-  }, [start, end, breaks, holidaysMap, todayStr, lunchConfig]);
-
-  const dow = today.getDay();
+  const day = parseDate(dateStr);
+  const dow = day.getDay();
   const isSunday = dow === 0;
   const isSaturday = dow === 6;
-  const isHoliday = holidaysMap.has(todayStr);
-  const holidayName = holidaysMap.get(todayStr);
+  const isHoliday = holidaysMap.has(dateStr);
+  const holidayName = holidaysMap.get(dateStr);
   const badgeKind = isHoliday ? 'holiday' : (isSunday ? 'sunday' : (isSaturday ? 'saturday' : null));
-
-  const fillStandard = () => { setStart('07:40'); setEnd('17:30'); };
-  const handleClear = () => { setStart(''); setEnd(''); setBreaks([]); setNote(''); onDeleteEntry(todayStr); };
-
-  const addBreak = () => setBreaks([...breaks, { start: '', end: '' }]);
-  const updateBreak = (i, field, val) =>
-    setBreaks(breaks.map((b, idx) => idx === i ? { ...b, [field]: val } : b));
-  const removeBreak = (i) => setBreaks(breaks.filter((_, idx) => idx !== i));
-
-  const hasEntry = !!currentEntry?.start;
-
 
   return (
     <div className="px-4 pt-5 max-w-md mx-auto animate-screen-in">
@@ -1274,7 +1212,7 @@ function TodayScreen({
         </div>
         <div className="text-4xl text-stone-100 leading-[1.05]"
              style={{ fontFamily: "'Fraunces', serif", fontWeight: 400 }}>
-          {today.getDate()} de {MONTH_FULL[today.getMonth()]}
+          {day.getDate()} de {MONTH_FULL[day.getMonth()]}
         </div>
         <div className="text-stone-400 text-sm mt-1.5 capitalize">
           {DAY_FULL[dow]}
@@ -1284,6 +1222,101 @@ function TodayScreen({
         )}
       </div>
 
+      <DayEditor
+        key={`${dateStr}:${dataVersion}`}
+        dateStr={dateStr}
+        entry={data.entries[dateStr]}
+        holidaysMap={holidaysMap}
+        lunchConfig={lunchConfig}
+        onSaveEntry={onSaveEntry}
+        onDeleteEntry={onDeleteEntry}
+      />
+
+      {/* Atalho para o mês */}
+      <button
+        onClick={onGoToMonth}
+        className="w-full rounded-2xl border border-stone-800 bg-stone-900/30 p-4 hover:bg-stone-900/60 transition flex items-center justify-between text-left active:scale-[0.99]"
+      >
+        <div>
+          <div className="text-[10.5px] uppercase tracking-[0.16em] text-stone-500">
+            Acumulado · {MONTH_FULL[refMonth.month - 1]} {refMonth.year}
+          </div>
+          <div className="text-2xl text-stone-100 mt-1 tabular-nums"
+               style={{ fontFamily: "'Fraunces', serif" }}>
+            {formatDurationLong(monthlyTotals.total)}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 text-stone-400 text-xs">
+          ver mês
+          <ChevronRight size={14} />
+        </div>
+      </button>
+    </div>
+  );
+}
+
+// Edita EXATAMENTE um dia — o da prop `dateStr`.
+// Renderizada com key={dateStr}:{dataVersion}, então remonta ao trocar de dia
+// e ao importar um backup. É a remontagem que garante que o formulário nunca
+// aponte para outro dia: não existe efeito de sincronização, e portanto não
+// sobra array de dependências para alguém errar depois.
+function DayEditor({ dateStr, entry, holidaysMap, lunchConfig, onSaveEntry, onDeleteEntry }) {
+  const [start, setStart] = useState(entry?.start || '');
+  const [end, setEnd] = useState(entry?.end || '');
+  const [breaks, setBreaks] = useState(entry?.breaks || []);
+  const [note, setNote] = useState(entry?.note || '');
+  const [showSaved, setShowSaved] = useState(false);
+  const initRef = useRef(true);
+  const savedTimer = useRef(null);
+
+  // Este componente remonta a cada troca de dia: não deixar timer pendente.
+  useEffect(() => () => {
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+  }, []);
+
+  // Auto-save: grava a entrada assim que ela for válida, mesmo sem a saída.
+  // Apagar a saída de um dia completo rebaixa o dia para "em aberto".
+  useEffect(() => {
+    if (initRef.current) { initRef.current = false; return; }
+    const payload = buildEntryPayload({ start, end, breaks, note });
+    if (!payload) return;
+    if (sameEntry(entry, payload)) return;
+
+    onSaveEntry(dateStr, payload);
+    setShowSaved(true);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setShowSaved(false), 1600);
+  }, [start, end, breaks, note]); // eslint-disable-line
+
+  const sm = parseHM(start);
+  const em = parseHM(end);
+  const invalidTime = sm != null && em != null && em === sm;
+  const isNightShift = sm != null && em != null && em < sm;
+  const missingEnd = sm != null && !end;
+
+  const dayOT = useMemo(() => {
+    const s = parseHM(start);
+    const e = parseHM(end);
+    if (s == null || e == null || e === s) return null;
+    const set = new Set(holidaysMap.keys());
+    const parsedBreaks = (breaks || [])
+      .map(b => ({ start: parseHM(b.start), end: parseHM(b.end) }))
+      .filter(b => b.start != null && b.end != null);
+    return calculateOvertime(dateStr, s, e, set, lunchConfig, parsedBreaks);
+  }, [start, end, breaks, holidaysMap, dateStr, lunchConfig]);
+
+  const fillStandard = () => { setStart('07:40'); setEnd('17:30'); };
+  const handleClear = () => { setStart(''); setEnd(''); setBreaks([]); setNote(''); onDeleteEntry(dateStr); };
+
+  const addBreak = () => setBreaks([...breaks, { start: '', end: '' }]);
+  const updateBreak = (i, field, val) =>
+    setBreaks(breaks.map((b, idx) => idx === i ? { ...b, [field]: val } : b));
+  const removeBreak = (i) => setBreaks(breaks.filter((_, idx) => idx !== i));
+
+  const hasEntry = !!entry?.start;
+
+  return (
+    <>
       {/* Card de lançamento */}
       <div className="rounded-3xl border border-stone-800 bg-gradient-to-br from-stone-900/80 to-stone-900/40 p-5 mb-5 relative overflow-hidden">
         <div className="absolute -top-12 -right-10 w-40 h-40 rounded-full bg-amber-500/[0.05] blur-3xl pointer-events-none" />
@@ -1414,49 +1447,29 @@ function TodayScreen({
         <div className="flex items-end gap-2 mt-2">
           <div className="text-4xl text-stone-100 leading-none tabular-nums"
                style={{ fontFamily: "'Fraunces', serif", fontWeight: 400 }}>
-            {todayOT ? formatDurationLong(todayOT.total) : '—'}
+            {dayOT ? formatDurationLong(dayOT.total) : '—'}
           </div>
           <div className="text-stone-500 text-xs pb-1">hh:mm</div>
         </div>
 
-        {todayOT && todayOT.total > 0 && (
+        {dayOT && dayOT.total > 0 && (
           <div className="grid grid-cols-2 gap-2 mt-4">
-            {todayOT.d50 > 0 && <StatCard label="50% diurno" value={formatDurationLong(todayOT.d50)} accentClass="bg-amber-400" />}
-            {todayOT.d100 > 0 && <StatCard label="100% diurno" value={formatDurationLong(todayOT.d100)} accentClass="bg-rose-400" />}
-            {todayOT.n50 > 0 && <StatCard label="50% noturno" value={formatDurationLong(todayOT.n50)} accentClass="bg-indigo-400" />}
-            {todayOT.n100 > 0 && <StatCard label="100% noturno" value={formatDurationLong(todayOT.n100)} accentClass="bg-violet-400" />}
+            {dayOT.d50 > 0 && <StatCard label="50% diurno" value={formatDurationLong(dayOT.d50)} accentClass="bg-amber-400" />}
+            {dayOT.d100 > 0 && <StatCard label="100% diurno" value={formatDurationLong(dayOT.d100)} accentClass="bg-rose-400" />}
+            {dayOT.n50 > 0 && <StatCard label="50% noturno" value={formatDurationLong(dayOT.n50)} accentClass="bg-indigo-400" />}
+            {dayOT.n100 > 0 && <StatCard label="100% noturno" value={formatDurationLong(dayOT.n100)} accentClass="bg-violet-400" />}
           </div>
         )}
 
-        {todayOT && todayOT.total === 0 && (
+        {dayOT && dayOT.total === 0 && (
           <div className="text-xs text-stone-500 mt-2">Hoje não houve horas extras</div>
         )}
 
-        {!todayOT && (
+        {!dayOT && (
           <div className="text-xs text-stone-500 mt-2">Lance entrada e saída para calcular</div>
         )}
       </div>
-
-      {/* Atalho para o mês */}
-      <button
-        onClick={onGoToMonth}
-        className="w-full rounded-2xl border border-stone-800 bg-stone-900/30 p-4 hover:bg-stone-900/60 transition flex items-center justify-between text-left active:scale-[0.99]"
-      >
-        <div>
-          <div className="text-[10.5px] uppercase tracking-[0.16em] text-stone-500">
-            Acumulado · {MONTH_FULL[refMonth.month - 1]} {refMonth.year}
-          </div>
-          <div className="text-2xl text-stone-100 mt-1 tabular-nums"
-               style={{ fontFamily: "'Fraunces', serif" }}>
-            {formatDurationLong(monthlyTotals.total)}
-          </div>
-        </div>
-        <div className="flex items-center gap-1 text-stone-400 text-xs">
-          ver mês
-          <ChevronRight size={14} />
-        </div>
-      </button>
-    </div>
+    </>
   );
 }
 
@@ -1613,6 +1626,12 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showCopy, setShowCopy] = useState(false);
 
+  // Incrementado SÓ pelo importJSON. Entra na key da DayEditor para forçar a
+  // remontagem do formulário quando os dados são substituídos por baixo dele —
+  // sem isso, a tela ficaria mostrando o dado de antes do import e a primeira
+  // edição gravaria por cima do backup recém-importado.
+  const [dataVersion, setDataVersion] = useState(0);
+
   // Carregamento inicial + init dos anos
   useEffect(() => {
     loadData().then((d) => {
@@ -1732,6 +1751,7 @@ export default function App() {
       settings: imported.settings || DEFAULT_SETTINGS,
     };
     persist(withDefaults);
+    setDataVersion((v) => v + 1);
   };
 
 
@@ -1864,12 +1884,13 @@ export default function App() {
       )}
 
       {currentTab === 'today' ? (
-        <TodayScreen
+        <DayScreen
           data={data}
           holidaysMap={holidaysMap}
           refMonth={refMonth}
           monthlyTotals={totals}
           lunchConfig={lunchConfig}
+          dataVersion={dataVersion}
           onSaveEntry={saveEntry}
           onDeleteEntry={deleteEntry}
           onOpenSettings={() => setShowSettings(true)}
