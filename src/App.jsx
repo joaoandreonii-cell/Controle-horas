@@ -5,6 +5,7 @@ import {
   Home, CalendarDays, Pencil, Download, Upload, Moon, FileSpreadsheet,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { Analytics } from '@vercel/analytics/react';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
@@ -1926,6 +1927,8 @@ export default function App() {
         onClose={() => setShowCopy(false)}
         text={buildCopyText()}
       />
+
+      <Analytics />
     </div>
   );
 }
