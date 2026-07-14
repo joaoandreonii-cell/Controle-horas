@@ -3,9 +3,10 @@ import {
   ChevronLeft, ChevronRight, Settings, X, Plus, Copy,
   Check, Trash2, Calendar, Sparkles, AlertTriangle, Wand2,
   Home, CalendarDays, Pencil, Download, Upload, Moon, FileSpreadsheet,
+  Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { parseHM, entryState } from './entry';
+import { parseHM, entryState, buildEntryPayload, sameEntry } from './entry';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
@@ -1200,36 +1201,25 @@ function TodayScreen({
     setNote(currentEntry?.note || '');
   }, [currentEntry?.start, currentEntry?.end]); // eslint-disable-line
 
-  // Auto-save quando entrada e saída estão válidas
+  // Auto-save: grava a entrada assim que ela for válida, mesmo sem a saída.
+  // Apagar a saída de um dia completo rebaixa o dia para "em aberto".
   useEffect(() => {
     if (initRef.current) { initRef.current = false; return; }
-    const sm = parseHM(start);
-    const em = parseHM(end);
-    if (sm != null && em != null && em !== sm) {
-      const validBreaks = breaks.filter(b => parseHM(b.start) != null && parseHM(b.end) != null);
-      const payload = { start, end };
-      if (validBreaks.length > 0) payload.breaks = validBreaks;
-      if (note.trim()) payload.note = note.trim();
+    const payload = buildEntryPayload({ start, end, breaks, note });
+    if (!payload) return;
+    if (sameEntry(currentEntry, payload)) return;
 
-      const curBreaks = currentEntry?.breaks || [];
-      const same = currentEntry && currentEntry.start === start && currentEntry.end === end &&
-        (note.trim() || '') === (currentEntry.note || '') &&
-        validBreaks.length === curBreaks.length &&
-        validBreaks.every((b, i) => b.start === curBreaks[i]?.start && b.end === curBreaks[i]?.end);
-
-      if (!same) {
-        onSaveEntry(todayStr, payload);
-        setShowSaved(true);
-        if (savedTimer.current) clearTimeout(savedTimer.current);
-        savedTimer.current = setTimeout(() => setShowSaved(false), 1600);
-      }
-    }
+    onSaveEntry(todayStr, payload);
+    setShowSaved(true);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setShowSaved(false), 1600);
   }, [start, end, breaks, note]); // eslint-disable-line
 
   const todaySm = parseHM(start);
   const todayEm = parseHM(end);
   const invalidTime = todaySm != null && todayEm != null && todayEm === todaySm;
   const isNightShift = todaySm != null && todayEm != null && todayEm < todaySm;
+  const missingEnd = todaySm != null && !end;
 
   const todayOT = useMemo(() => {
     const sm = parseHM(start);
@@ -1319,6 +1309,13 @@ function TodayScreen({
             <Wand2 size={14} />
             Preencher expediente padrão
           </button>
+
+          {missingEnd && (
+            <div className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-950/40 border border-amber-900/50 text-amber-300 text-xs">
+              <Clock size={13} className="flex-shrink-0" />
+              Falta a saída — não entra no somatório
+            </div>
+          )}
 
           {invalidTime && (
             <div className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-rose-950/50 border border-rose-900/60 text-rose-300 text-xs">
