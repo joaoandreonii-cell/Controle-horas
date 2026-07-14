@@ -1,7 +1,7 @@
 # Lançamento parcial (entrada sem saída)
 
 Data: 2026-07-14
-Status: aguardando revisão
+Status: aprovado
 
 ## Objetivo
 
