@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, Settings, X, Plus, Copy,
   Check, Trash2, Calendar, Sparkles, AlertTriangle, Wand2,
@@ -1676,10 +1676,12 @@ export default function App() {
   // Única porta para trocar o dia exibido. O mês de referência acompanha o dia,
   // então o "Acumulado" e a aba de mês sempre mostram o período a que o dia
   // exibido pertence.
-  const selectDate = (dateStr) => {
+  // Identidade estável: a DayScreen usa esta função como dependência do timer
+  // da meia-noite, que sem isso re-assinaria o intervalo a cada render.
+  const selectDate = useCallback((dateStr) => {
     setSelectedDate(dateStr);
     setRefMonth(refMonthForDate(dateStr));
-  };
+  }, []);
 
   const lunchConfig = LUNCH_CONFIG;
 
