@@ -5,6 +5,7 @@ import {
   Home, CalendarDays, Pencil, Download, Upload, Moon, FileSpreadsheet,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { parseHM, entryState } from './entry';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
@@ -81,13 +82,6 @@ function getHolidayDefaults(year) {
 }
 
 /* Time */
-const parseHM = (s) => {
-  if (!s || !/^\d{1,2}:\d{2}$/.test(s)) return null;
-  const [h, m] = s.split(':').map(Number);
-  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
-  return h * 60 + m;
-};
-
 const formatDuration = (mins) => {
   if (!mins) return '0h';
   const h = Math.floor(mins / 60);
@@ -1672,7 +1666,7 @@ export default function App() {
     for (const day of days) {
       const ds = formatDate(day);
       const e = data.entries[ds];
-      if (!e || !e.start || !e.end) { ots[ds] = null; continue; }
+      if (entryState(e) !== 'complete') { ots[ds] = null; continue; }
       const sm = parseHM(e.start); const em = parseHM(e.end);
       if (sm == null || em == null || em === sm) { ots[ds] = null; continue; }
       const entryBreaks = (e.breaks || [])
