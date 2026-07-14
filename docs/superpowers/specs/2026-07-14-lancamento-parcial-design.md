@@ -135,6 +135,27 @@ Nenhum caminho perde dado, dá NaN ou quebra. A única divergência é cosmétic
 antiga o parcial aparece como um dia vazio na lista do mês, embora o dado esteja íntegro
 e o modal o mostre ao abrir (`631`). Some quando o service worker atualizar.
 
+**Verificado em execução em 2026-07-14** (Task 6 do plano): um `{ start }` gravado pela
+versão nova e lido pela versão anterior não soma no total, não gera NaN, é pulado nos
+exports e mantém o dado íntegro — o modal antigo abre com a entrada preenchida. A ida e
+volta entre as versões não altera o armazenamento.
+
+O que foi rodado, com o `src/App.jsx` da `main` no working tree e o `localStorage`
+gravado pela versão nova (dois parciais, um deles com `note` e `breaks`, mais dois dias
+completos):
+
+| Verificação | Resultado |
+|---|---|
+| Erros no console / `NaN` em tela | Nenhum |
+| "Acumulado" e "Total no período" | `02:00` — exatamente as horas do dia completo; os parciais não somam nem corrompem |
+| Lista do mês, dia parcial | `tocar para lançar` — a divergência cosmética prevista |
+| Tela principal, dia parcial | entrada `08:00` preenchida, saída vazia |
+| Modal antigo sobre o parcial | abre com entrada `08:00`, a pausa `10:00–10:15` e a observação `obra` — a forma nova é lida inteira, campos opcionais inclusive |
+| Fechar o modal sem salvar | dado inalterado |
+| WhatsApp | só o dia completo com extra sai; os parciais são pulados, sem linha quebrada |
+| Excel | mesma guarda (`!ot \|\| ot.total === 0`, `1819`) sobre o mesmo `dayOTs` (`1675`) que o WhatsApp (`1769`) — pulado pelo mesmo mecanismo |
+| Ida e volta nova → antiga → nova | `localStorage` **byte a byte idêntico** (1610 bytes, hash conferido antes e depois) |
+
 ## Teste
 
 Manual, no aparelho:
