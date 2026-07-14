@@ -1168,20 +1168,28 @@ function CopyModal({ open, onClose, text }) {
 
 function DayScreen({
   data, holidaysMap, refMonth, monthlyTotals, lunchConfig, dataVersion,
+  selectedDate, onSelectDate,
   onSaveEntry, onDeleteEntry, onOpenSettings, onGoToMonth,
 }) {
   const [today, setToday] = useState(() => new Date());
   const todayStr = formatDate(today);
-  const dateStr = todayStr;
+  const dateStr = selectedDate;
 
-  // Atualiza "hoje" se o dia mudar (app aberto pela meia-noite)
+  // Atualiza "hoje" se o dia mudar (app aberto pela meia-noite).
+  // Só arrasta a data selecionada se o usuário estiver justamente no dia que
+  // virou — olhando outro dia, ninguém é movido de lugar.
   useEffect(() => {
     const check = setInterval(() => {
       const now = new Date();
-      if (formatDate(now) !== formatDate(today)) setToday(now);
+      const nowStr = formatDate(now);
+      if (nowStr !== formatDate(today)) {
+        const wasOnToday = selectedDate === formatDate(today);
+        setToday(now);
+        if (wasOnToday) onSelectDate(nowStr);
+      }
     }, 60_000);
     return () => clearInterval(check);
-  }, [today]);
+  }, [today, selectedDate, onSelectDate]);
 
   const day = parseDate(dateStr);
   const dow = day.getDay();
@@ -1632,6 +1640,8 @@ export default function App() {
   // edição gravaria por cima do backup recém-importado.
   const [dataVersion, setDataVersion] = useState(0);
 
+  const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
+
   // Carregamento inicial + init dos anos
   useEffect(() => {
     loadData().then((d) => {
@@ -1661,6 +1671,14 @@ export default function App() {
       setSaveError(true);
       setTimeout(() => setSaveError(false), 5000);
     }
+  };
+
+  // Única porta para trocar o dia exibido. O mês de referência acompanha o dia,
+  // então o "Acumulado" e a aba de mês sempre mostram o período a que o dia
+  // exibido pertence.
+  const selectDate = (dateStr) => {
+    setSelectedDate(dateStr);
+    setRefMonth(refMonthForDate(dateStr));
   };
 
   const lunchConfig = LUNCH_CONFIG;
@@ -1891,6 +1909,8 @@ export default function App() {
           monthlyTotals={totals}
           lunchConfig={lunchConfig}
           dataVersion={dataVersion}
+          selectedDate={selectedDate}
+          onSelectDate={selectDate}
           onSaveEntry={saveEntry}
           onDeleteEntry={deleteEntry}
           onOpenSettings={() => setShowSettings(true)}
@@ -1912,7 +1932,13 @@ export default function App() {
         />
       )}
 
-      <TabBar current={currentTab} onChange={setCurrentTab} />
+      <TabBar
+        current={currentTab}
+        onChange={(tab) => {
+          setCurrentTab(tab);
+          if (tab === 'today') selectDate(formatDate(new Date()));
+        }}
+      />
 
       <EntryEditor
         open={!!editingDate}
