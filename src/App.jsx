@@ -1281,28 +1281,53 @@ function DayScreen({
 
       {/* Hero */}
       <div className="mb-6">
-        {isToday ? (
-          <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-medium mb-2">
-            Hoje
-          </div>
-        ) : (
+        <div className="text-center">
+          {isToday ? (
+            <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-medium mb-2">
+              Hoje
+            </div>
+          ) : (
+            <button
+              onClick={() => { setDayAnim('right'); onSelectDate(todayStr); }}
+              className="mb-2 mx-auto flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.18em] text-amber-400/90 font-medium hover:text-amber-300 transition"
+            >
+              {heroLabel}
+              <span className="normal-case tracking-normal text-stone-500">· voltar para hoje</span>
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
           <button
-            onClick={() => { setDayAnim('right'); onSelectDate(todayStr); }}
-            className="mb-2 flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.18em] text-amber-400/90 font-medium hover:text-amber-300 transition"
+            onClick={() => goToDay(-1)}
+            className="w-10 h-10 flex-shrink-0 rounded-full bg-stone-900 border border-stone-800 hover:bg-stone-800 flex items-center justify-center text-stone-400 transition"
+            aria-label="Dia anterior"
           >
-            {heroLabel}
-            <span className="normal-case tracking-normal text-stone-500">· voltar para hoje</span>
+            <ChevronLeft size={18} />
           </button>
-        )}
-        <div className="text-4xl text-stone-100 leading-[1.05]"
-             style={{ fontFamily: "'Fraunces', serif", fontWeight: 400 }}>
-          {day.getDate()} de {MONTH_FULL[day.getMonth()]}
+
+          <div className="flex-1 min-w-0 text-center">
+            <div className="text-4xl text-stone-100 leading-[1.05]"
+                 style={{ fontFamily: "'Fraunces', serif", fontWeight: 400 }}>
+              {day.getDate()} de {MONTH_FULL[day.getMonth()]}
+            </div>
+            <div className="text-stone-400 text-sm mt-1.5 capitalize">
+              {DAY_FULL[dow]}
+            </div>
+          </div>
+
+          <button
+            onClick={() => goToDay(1)}
+            disabled={!canGoForward}
+            className="w-10 h-10 flex-shrink-0 rounded-full bg-stone-900 border border-stone-800 flex items-center justify-center text-stone-400 transition enabled:hover:bg-stone-800 disabled:opacity-30"
+            aria-label="Próximo dia"
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
-        <div className="text-stone-400 text-sm mt-1.5 capitalize">
-          {DAY_FULL[dow]}
-        </div>
+
         {badgeKind && (
-          <div className="mt-3"><DayBadge kind={badgeKind} name={holidayName} /></div>
+          <div className="mt-3 flex justify-center"><DayBadge kind={badgeKind} name={holidayName} /></div>
         )}
       </div>
 
