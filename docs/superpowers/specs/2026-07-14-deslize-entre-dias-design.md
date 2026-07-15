@@ -225,6 +225,24 @@ Fora isso, a feature não toca `controle_horas_v3`, a migração nem a forma do 
 gravado. O outro risco — o vínculo formulário↔dia — é o que o `key` elimina por
 construção.
 
+**Verificado em execução em 2026-07-15** (Task 6 do plano): os dois caminhos de perda
+foram exercitados no navegador. Dois dias seguidos com o mesmo `start`/`end` e observações
+diferentes — o cenário exato que o efeito antigo errava: deslizar de um para o outro mostra
+a observação do dia certo, e editar o dia novo não toca o vizinho (o dia 12 continuou
+`{start:'08:00', end:'17:00', note:'reuniao'}` depois de o dia 13 virar `18:00`). Importar
+um backup com a aba "hoje" aberta passa a refletir na tela — o formulário estava com
+`20:30` e passou a mostrar o `19:30` do backup — e a edição seguinte não ressuscita o valor
+de antes do import. O lançamento parcial num dia navegado continua gravando `{ start }` sem
+a chave `end`, e o `EM ABERTO` continua na lista do mês. A rolagem vertical por toque
+continua funcionando (`overflow-y: visible` em `html`/`body`/`#root`, `touch-action: auto`,
+nenhum `preventDefault` nem `touchmove` no código) e o `src/index.css` não foi tocado.
+
+Ressalva do ambiente: a injeção de teclas e cliques reais do navegador não funcionou nesta
+sessão, então os campos foram dirigidos pelo mesmo evento `input` de onde sai o `onChange`
+do React — o caminho de `handleChange`/`maskTime`/auto-save é o real, mas a tradução
+tecla→valor do próprio navegador não foi exercitada. **Falta confirmar no aparelho:** tocar
+na saída de um dia completo e digitar `1945` tem que dar `19:45`, não `94:5`.
+
 ## Teste
 
 Automatizado, só de função pura (`src/entry.test.js` ou um módulo novo):
