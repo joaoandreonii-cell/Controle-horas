@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx';
 import { Analytics } from '@vercel/analytics/react';
 import { parseHM, entryState, buildEntryPayload, sameEntry } from './entry';
 import { refMonthForDate } from './period';
+import { swipeIntent } from './swipe';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
@@ -1221,6 +1222,21 @@ function DayScreen({
   // esquerda, futuro à direita. Ir para frente traz o dia da direita.
   const [dayAnim, setDayAnim] = useState(null);
 
+  // Passado é livre; para frente trava em hoje.
+  const canGoForward = dateStr < todayStr;
+
+  // Um caminho só para trocar o dia: o gesto e os botões da Task 3 passam por
+  // aqui. Duas cópias do limite divergiriam na primeira vez que alguém mexesse
+  // numa delas.
+  const goToDay = (delta) => {
+    const next = formatDate(addDays(parseDate(dateStr), delta));
+    // Sem aviso: a ausência de movimento é o feedback, e um toast para um gesto
+    // acidental é ruído.
+    if (next > todayStr) return;
+    setDayAnim(delta > 0 ? 'right' : 'left');
+    onSelectDate(next);
+  };
+
   const handleTouchStart = (e) => {
     if (e.touches.length > 1) { touchRef.current = null; return; }
     const t = e.touches[0];
@@ -1229,26 +1245,20 @@ function DayScreen({
     if (t.clientX < 24 || t.clientX > window.innerWidth - 24) { touchRef.current = null; return; }
     // Arrastar dentro de um campo não troca o dia.
     if (e.target.closest('input, textarea, button')) { touchRef.current = null; return; }
-    touchRef.current = { x0: t.clientX, y0: t.clientY };
+    touchRef.current = { x0: t.clientX, y0: t.clientY, t0: Date.now() };
   };
 
   const handleTouchEnd = (e) => {
-    const t0 = touchRef.current;
+    const start = touchRef.current;
     touchRef.current = null;
-    if (!t0) return;
+    if (!start) return;
     const t = e.changedTouches[0];
-    const dx = t.clientX - t0.x0;
-    const dy = t.clientY - t0.y0;
-    if (Math.abs(dx) <= 60 || Math.abs(dx) <= Math.abs(dy) * 2) return;
-
-    // Esquerda avança um dia, direita volta um dia.
-    const delta = dx < 0 ? 1 : -1;
-    const next = formatDate(addDays(parseDate(dateStr), delta));
-    // Passado é livre; para frente trava em hoje. Sem aviso: a ausência de
-    // movimento é o feedback, e um toast para um gesto acidental é ruído.
-    if (next > todayStr) return;
-    setDayAnim(delta > 0 ? 'right' : 'left');
-    onSelectDate(next);
+    const intent = swipeIntent({
+      dx: t.clientX - start.x0,
+      dy: t.clientY - start.y0,
+      dt: Date.now() - start.t0,
+    });
+    if (intent) goToDay(intent);
   };
 
   return (
