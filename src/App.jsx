@@ -281,10 +281,14 @@ function FontStyles() {
       @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
       @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
       @keyframes screen-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes day-in-left { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+      @keyframes day-in-right { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
 
       .animate-fade-in { animation: fade-in 0.18s ease-out; }
       .animate-slide-up { animation: slide-up 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
       .animate-screen-in { animation: screen-in 0.22s ease-out; }
+      .animate-day-in-left { animation: day-in-left 0.2s ease-out; }
+      .animate-day-in-right { animation: day-in-right 0.2s ease-out; }
 
       /* Inputs — mobile-friendly */
       input[type="date"] {
@@ -1199,11 +1203,22 @@ function DayScreen({
   const holidayName = holidaysMap.get(dateStr);
   const badgeKind = isHoliday ? 'holiday' : (isSunday ? 'sunday' : (isSaturday ? 'saturday' : null));
 
+  // "Amanhã" não existe aqui: o limite do gesto impede passar de hoje.
+  const yesterdayStr = formatDate(addDays(parseDate(todayStr), -1));
+  const heroLabel = dateStr === todayStr ? 'Hoje'
+    : dateStr === yesterdayStr ? 'Ontem'
+    : formatDateBR(dateStr);
+  const isToday = dateStr === todayStr;
+
   // Gesto: só coordenadas, sem touchmove e sem preventDefault.
   // Um arrasto horizontal não tem comportamento nativo para cancelar, então o
   // gesto nunca precisa cancelar nada — e portanto não pode quebrar a rolagem
   // vertical por toque, que três commits recentes tiveram que consertar.
   const touchRef = useRef(null);
+
+  // De que lado o dia novo entra. Os dias são uma faixa horizontal: passado à
+  // esquerda, futuro à direita. Ir para frente traz o dia da direita.
+  const [dayAnim, setDayAnim] = useState(null);
 
   const handleTouchStart = (e) => {
     if (e.touches.length > 1) { touchRef.current = null; return; }
@@ -1231,6 +1246,7 @@ function DayScreen({
     // Passado é livre; para frente trava em hoje. Sem aviso: a ausência de
     // movimento é o feedback, e um toast para um gesto acidental é ruído.
     if (next > todayStr) return;
+    setDayAnim(delta > 0 ? 'right' : 'left');
     onSelectDate(next);
   };
 
@@ -1254,9 +1270,19 @@ function DayScreen({
 
       {/* Hero */}
       <div className="mb-6">
-        <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-medium mb-2">
-          Hoje
-        </div>
+        {isToday ? (
+          <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-medium mb-2">
+            Hoje
+          </div>
+        ) : (
+          <button
+            onClick={() => { setDayAnim('right'); onSelectDate(todayStr); }}
+            className="mb-2 flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.18em] text-amber-400/90 font-medium hover:text-amber-300 transition"
+          >
+            {heroLabel}
+            <span className="normal-case tracking-normal text-stone-500">· voltar para hoje</span>
+          </button>
+        )}
         <div className="text-4xl text-stone-100 leading-[1.05]"
              style={{ fontFamily: "'Fraunces', serif", fontWeight: 400 }}>
           {day.getDate()} de {MONTH_FULL[day.getMonth()]}
@@ -1275,6 +1301,7 @@ function DayScreen({
         entry={data.entries[dateStr]}
         holidaysMap={holidaysMap}
         lunchConfig={lunchConfig}
+        anim={dayAnim}
         onSaveEntry={onSaveEntry}
         onDeleteEntry={onDeleteEntry}
       />
@@ -1307,7 +1334,7 @@ function DayScreen({
 // e ao importar um backup. É a remontagem que garante que o formulário nunca
 // aponte para outro dia: não existe efeito de sincronização, e portanto não
 // sobra array de dependências para alguém errar depois.
-function DayEditor({ dateStr, entry, holidaysMap, lunchConfig, onSaveEntry, onDeleteEntry }) {
+function DayEditor({ dateStr, entry, holidaysMap, lunchConfig, anim, onSaveEntry, onDeleteEntry }) {
   const [start, setStart] = useState(entry?.start || '');
   const [end, setEnd] = useState(entry?.end || '');
   const [breaks, setBreaks] = useState(entry?.breaks || []);
@@ -1363,7 +1390,7 @@ function DayEditor({ dateStr, entry, holidaysMap, lunchConfig, onSaveEntry, onDe
   const hasEntry = !!entry?.start;
 
   return (
-    <>
+    <div className={anim === 'left' ? 'animate-day-in-left' : anim === 'right' ? 'animate-day-in-right' : undefined}>
       {/* Card de lançamento */}
       <div className="rounded-3xl border border-stone-800 bg-gradient-to-br from-stone-900/80 to-stone-900/40 p-5 mb-5 relative overflow-hidden">
         <div className="absolute -top-12 -right-10 w-40 h-40 rounded-full bg-amber-500/[0.05] blur-3xl pointer-events-none" />
@@ -1480,7 +1507,7 @@ function DayEditor({ dateStr, entry, holidaysMap, lunchConfig, onSaveEntry, onDe
               className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-stone-500 text-xs hover:text-rose-400 transition"
             >
               <Trash2 size={12} />
-              Limpar lançamento de hoje
+              Limpar lançamento do dia
             </button>
           )}
         </div>
@@ -1489,7 +1516,7 @@ function DayEditor({ dateStr, entry, holidaysMap, lunchConfig, onSaveEntry, onDe
       {/* Preview de horas extras */}
       <div className="rounded-3xl border border-stone-800 bg-stone-900/30 p-5 mb-4">
         <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-medium">
-          Horas extras de hoje
+          Horas extras do dia
         </div>
         <div className="flex items-end gap-2 mt-2">
           <div className="text-4xl text-stone-100 leading-none tabular-nums"
@@ -1509,14 +1536,14 @@ function DayEditor({ dateStr, entry, holidaysMap, lunchConfig, onSaveEntry, onDe
         )}
 
         {dayOT && dayOT.total === 0 && (
-          <div className="text-xs text-stone-500 mt-2">Hoje não houve horas extras</div>
+          <div className="text-xs text-stone-500 mt-2">Sem horas extras neste dia</div>
         )}
 
         {!dayOT && (
           <div className="text-xs text-stone-500 mt-2">Lance entrada e saída para calcular</div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
