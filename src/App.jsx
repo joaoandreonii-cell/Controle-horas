@@ -6,6 +6,7 @@ import {
   Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { Analytics } from '@vercel/analytics/react';
 import { parseHM, entryState, buildEntryPayload, sameEntry } from './entry';
 import { refMonthForDate } from './period';
 
@@ -2035,6 +2036,8 @@ export default function App() {
         onClose={() => setShowCopy(false)}
         text={buildCopyText()}
       />
+
+      <Analytics />
     </div>
   );
 }
