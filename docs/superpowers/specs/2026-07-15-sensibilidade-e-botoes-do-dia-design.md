@@ -186,6 +186,36 @@ reconfirmar:
   `e.target.closest('input, textarea, button')`. Os chevrons são `<button>`, então já estão
   cobertos — mas isso vira acidental se alguém trocar a tag depois.
 
+**Verificado em execução em 2026-07-15** (Task 4 do plano): andar vinte dias seguidos nos
+botões, depressa (hoje → 5 de julho → hoje, cada clique andando exatamente um dia), **não
+gravou nada** — o `entries` do `localStorage` saiu idêntico ao que entrou. O vínculo
+formulário↔dia continua certo quando alcançado pelos botões em vez do gesto: 12 e 13 de
+julho, com o mesmo `start`/`end` e observações diferentes ("reuniao" e "obra"), mostram
+cada um a sua; editar o 13 gravou só o 13 e deixou o 12 intacto. Nenhum `touchmove` nem
+`preventDefault` no código — só a linha do comentário — e `git diff main -- src/index.css`
+sai vazio.
+
+O reconhecimento foi exercitado despachando `TouchEvent` de verdade na página (o `computer`
+do Claude in Chrome não entrega evento nenhum — ver a memória do projeto), com o `dt` medido
+de fato e não o pedido: o flick curto (`dx=-35`, `dt=71ms`, `v=0.49`) avança um dia; o arco
+do polegar (`dx=±80`, `dy=45`, `dt=180ms`, `v=0.44`) troca nos dois sentidos — as duas
+linhas que motivaram a spec, e que a regra antiga recusava. Os quatro gestos negativos
+(rolagem vertical, fling vertical, toque simples, arrasto curto e lento) não trocaram o
+dia, e em hoje deslizar para frente não fez nada. Tocar num chevron não dispara o gesto: o
+alvo real do toque é o `<path>` de dentro do ícone, e o `closest('input, textarea, button')`
+sobe do `<path>` até o `<button>` e sai fora — conferido, não presumido.
+
+**Não verificado por observação:** que a rolagem vertical por toque continua funcionando.
+Despachar `TouchEvent` não faz o navegador rolar, então nenhuma verificação daqui exercita
+isso. O que sustenta a garantia é estrutural, não observado: não há `touchmove`, não há
+`preventDefault`, e o `src/index.css` não mudou.
+
+**Pendente de confirmação no aparelho:** o reconhecimento em si. A tabela do
+`swipe.test.js` prova que a regra faz o que a spec diz, e os `TouchEvent` provam que o
+`handleTouchEnd` liga as coordenadas à regra — mas se `45px` e `0.4px/ms` são os números
+certos para o polegar do dono do projeto é uma aposta até ele deslizar. É o que motivou a
+spec, e é a única coisa que nenhum teste aqui decide.
+
 ## Risco de rolagem
 
 O ponto sensível do projeto. O que protege:
