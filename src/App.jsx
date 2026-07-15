@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, Settings, X, Plus, Copy,
   Check, Trash2, Calendar, Sparkles, AlertTriangle, Wand2,
   Home, CalendarDays, Pencil, Download, Upload, Moon, FileSpreadsheet,
+  Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Analytics } from '@vercel/analytics/react';
+import { parseHM, entryState, buildEntryPayload, sameEntry } from './entry';
+import { refMonthForDate } from './period';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
@@ -82,13 +85,6 @@ function getHolidayDefaults(year) {
 }
 
 /* Time */
-const parseHM = (s) => {
-  if (!s || !/^\d{1,2}:\d{2}$/.test(s)) return null;
-  const [h, m] = s.split(':').map(Number);
-  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
-  return h * 60 + m;
-};
-
 const formatDuration = (mins) => {
   if (!mins) return '0h';
   const h = Math.floor(mins / 60);
@@ -193,15 +189,7 @@ function getDaysInPeriod(start, end) {
 }
 
 function getDefaultRefMonth() {
-  const today = new Date();
-  const day = today.getDate();
-  const m = today.getMonth() + 1;
-  const y = today.getFullYear();
-  if (day >= 26) {
-    if (m === 12) return { year: y + 1, month: 1 };
-    return { year: y, month: m + 1 };
-  }
-  return { year: y, month: m };
+  return refMonthForDate(formatDate(new Date()));
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -294,10 +282,14 @@ function FontStyles() {
       @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
       @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
       @keyframes screen-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes day-in-left { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+      @keyframes day-in-right { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
 
       .animate-fade-in { animation: fade-in 0.18s ease-out; }
       .animate-slide-up { animation: slide-up 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
       .animate-screen-in { animation: screen-in 0.22s ease-out; }
+      .animate-day-in-left { animation: day-in-left 0.2s ease-out; }
+      .animate-day-in-right { animation: day-in-right 0.2s ease-out; }
 
       /* Inputs — mobile-friendly */
       input[type="date"] {
@@ -538,6 +530,7 @@ function DayRow({ day, entry, ot, isHoliday, holidayName, isToday, onClick }) {
   const isSaturday = dow === 6;
   const is100Day = isSunday || isHoliday;
   const breaksCount = entry?.breaks?.length || 0;
+  const state = entryState(entry);
 
   return (
     <button
@@ -563,11 +556,14 @@ function DayRow({ day, entry, ot, isHoliday, holidayName, isToday, onClick }) {
         </div>
 
         <div className="flex-1 min-w-0">
-          {entry?.start && entry?.end ? (
+          {state !== 'empty' ? (
             <div>
               <div className="text-sm text-stone-200 tabular-nums"
                    style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                {entry.start} <span className="text-stone-600">→</span> {entry.end}
+                {entry.start} <span className="text-stone-600">→</span>{' '}
+                {state === 'complete'
+                  ? entry.end
+                  : <span className="text-stone-600">——</span>}
               </div>
               {breaksCount > 0 && (
                 <div className="text-[10px] text-stone-500 mt-0.5">
@@ -608,6 +604,8 @@ function DayRow({ day, entry, ot, isHoliday, holidayName, isToday, onClick }) {
                 {ot.n100 > 0 && <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />}
               </div>
             </>
+          ) : state === 'partial' ? (
+            <div className="text-[10px] text-amber-400/90 uppercase tracking-wider">em aberto</div>
           ) : ot && ot.total === 0 && entry?.start ? (
             <div className="text-[10px] text-stone-600 uppercase tracking-wider">no ponto</div>
           ) : (
@@ -644,9 +642,12 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
   const isNightShift = sm != null && em != null && em < sm;
 
   const handleSave = () => {
-    if (!start || !end) { setError('Informe entrada e saída'); return; }
-    if (sm == null || em == null) { setError('Horário inválido'); return; }
-    if (em === sm) { setError('Entrada e saída não podem ser iguais'); return; }
+    if (!start) { setError('Informe a entrada'); return; }
+    if (sm == null) { setError('Horário de entrada inválido'); return; }
+    if (end) {
+      if (em == null) { setError('Horário de saída inválido'); return; }
+      if (em === sm) { setError('Entrada e saída não podem ser iguais'); return; }
+    }
     for (const b of breaks) {
       if (!b.start || !b.end) { setError('Preencha todos os campos das pausas'); return; }
       const bs = parseHM(b.start);
@@ -655,11 +656,7 @@ function EntryEditor({ open, onClose, day, isHoliday, holidayName, entry, onSave
       if (be <= bs) { setError('Fim da pausa deve ser após o início'); return; }
     }
     setError('');
-    const validBreaks = breaks.filter(b => b.start && b.end);
-    const payload = { start, end };
-    if (validBreaks.length > 0) payload.breaks = validBreaks;
-    if (note.trim()) payload.note = note.trim();
-    onSave(payload);
+    onSave(buildEntryPayload({ start, end, breaks, note }));
     onClose();
   };
 
@@ -1174,101 +1171,92 @@ function CopyModal({ open, onClose, text }) {
    TELAS
    ═════════════════════════════════════════════════════════════════════════ */
 
-function TodayScreen({
-  data, holidaysMap, refMonth, monthlyTotals, lunchConfig,
+function DayScreen({
+  data, holidaysMap, refMonth, monthlyTotals, lunchConfig, dataVersion,
+  selectedDate, onSelectDate,
   onSaveEntry, onDeleteEntry, onOpenSettings, onGoToMonth,
 }) {
   const [today, setToday] = useState(() => new Date());
   const todayStr = formatDate(today);
-  const currentEntry = data.entries[todayStr];
+  const dateStr = selectedDate;
 
-  const [start, setStart] = useState(currentEntry?.start || '');
-  const [end, setEnd] = useState(currentEntry?.end || '');
-  const [breaks, setBreaks] = useState(currentEntry?.breaks || []);
-  const [note, setNote] = useState(currentEntry?.note || '');
-  const [showSaved, setShowSaved] = useState(false);
-  const initRef = useRef(true);
-  const savedTimer = useRef(null);
-
-  // Atualiza "hoje" se o dia mudar (app aberto pela meia-noite)
+  // Atualiza "hoje" se o dia mudar (app aberto pela meia-noite).
+  // Só arrasta a data selecionada se o usuário estiver justamente no dia que
+  // virou — olhando outro dia, ninguém é movido de lugar.
   useEffect(() => {
     const check = setInterval(() => {
       const now = new Date();
-      if (formatDate(now) !== formatDate(today)) setToday(now);
+      const nowStr = formatDate(now);
+      if (nowStr !== formatDate(today)) {
+        const wasOnToday = selectedDate === formatDate(today);
+        setToday(now);
+        if (wasOnToday) onSelectDate(nowStr);
+      }
     }, 60_000);
     return () => clearInterval(check);
-  }, [today]);
+  }, [today, selectedDate, onSelectDate]);
 
-  // Sincroniza com mudanças externas (ex: editou pelo mês)
-  useEffect(() => {
-    setStart(currentEntry?.start || '');
-    setEnd(currentEntry?.end || '');
-    setBreaks(currentEntry?.breaks || []);
-    setNote(currentEntry?.note || '');
-  }, [currentEntry?.start, currentEntry?.end]); // eslint-disable-line
-
-  // Auto-save quando entrada e saída estão válidas
-  useEffect(() => {
-    if (initRef.current) { initRef.current = false; return; }
-    const sm = parseHM(start);
-    const em = parseHM(end);
-    if (sm != null && em != null && em !== sm) {
-      const validBreaks = breaks.filter(b => parseHM(b.start) != null && parseHM(b.end) != null);
-      const payload = { start, end };
-      if (validBreaks.length > 0) payload.breaks = validBreaks;
-      if (note.trim()) payload.note = note.trim();
-
-      const curBreaks = currentEntry?.breaks || [];
-      const same = currentEntry && currentEntry.start === start && currentEntry.end === end &&
-        (note.trim() || '') === (currentEntry.note || '') &&
-        validBreaks.length === curBreaks.length &&
-        validBreaks.every((b, i) => b.start === curBreaks[i]?.start && b.end === curBreaks[i]?.end);
-
-      if (!same) {
-        onSaveEntry(todayStr, payload);
-        setShowSaved(true);
-        if (savedTimer.current) clearTimeout(savedTimer.current);
-        savedTimer.current = setTimeout(() => setShowSaved(false), 1600);
-      }
-    }
-  }, [start, end, breaks, note]); // eslint-disable-line
-
-  const todaySm = parseHM(start);
-  const todayEm = parseHM(end);
-  const invalidTime = todaySm != null && todayEm != null && todayEm === todaySm;
-  const isNightShift = todaySm != null && todayEm != null && todayEm < todaySm;
-
-  const todayOT = useMemo(() => {
-    const sm = parseHM(start);
-    const em = parseHM(end);
-    if (sm == null || em == null || em === sm) return null;
-    const set = new Set(holidaysMap.keys());
-    const parsedBreaks = (breaks || [])
-      .map(b => ({ start: parseHM(b.start), end: parseHM(b.end) }))
-      .filter(b => b.start != null && b.end != null);
-    return calculateOvertime(todayStr, sm, em, set, lunchConfig, parsedBreaks);
-  }, [start, end, breaks, holidaysMap, todayStr, lunchConfig]);
-
-  const dow = today.getDay();
+  const day = parseDate(dateStr);
+  const dow = day.getDay();
   const isSunday = dow === 0;
   const isSaturday = dow === 6;
-  const isHoliday = holidaysMap.has(todayStr);
-  const holidayName = holidaysMap.get(todayStr);
+  const isHoliday = holidaysMap.has(dateStr);
+  const holidayName = holidaysMap.get(dateStr);
   const badgeKind = isHoliday ? 'holiday' : (isSunday ? 'sunday' : (isSaturday ? 'saturday' : null));
 
-  const fillStandard = () => { setStart('07:40'); setEnd('17:30'); };
-  const handleClear = () => { setStart(''); setEnd(''); setBreaks([]); setNote(''); onDeleteEntry(todayStr); };
+  // "Amanhã" não existe aqui: o limite do gesto impede passar de hoje.
+  const yesterdayStr = formatDate(addDays(parseDate(todayStr), -1));
+  const heroLabel = dateStr === todayStr ? 'Hoje'
+    : dateStr === yesterdayStr ? 'Ontem'
+    : formatDateBR(dateStr);
+  const isToday = dateStr === todayStr;
 
-  const addBreak = () => setBreaks([...breaks, { start: '', end: '' }]);
-  const updateBreak = (i, field, val) =>
-    setBreaks(breaks.map((b, idx) => idx === i ? { ...b, [field]: val } : b));
-  const removeBreak = (i) => setBreaks(breaks.filter((_, idx) => idx !== i));
+  // Gesto: só coordenadas, sem touchmove e sem preventDefault.
+  // Um arrasto horizontal não tem comportamento nativo para cancelar, então o
+  // gesto nunca precisa cancelar nada — e portanto não pode quebrar a rolagem
+  // vertical por toque, que três commits recentes tiveram que consertar.
+  const touchRef = useRef(null);
 
-  const hasEntry = !!currentEntry?.start;
+  // De que lado o dia novo entra. Os dias são uma faixa horizontal: passado à
+  // esquerda, futuro à direita. Ir para frente traz o dia da direita.
+  const [dayAnim, setDayAnim] = useState(null);
 
+  const handleTouchStart = (e) => {
+    if (e.touches.length > 1) { touchRef.current = null; return; }
+    const t = e.touches[0];
+    // Perto da borda lateral é o "voltar" do iOS no navegador. Em standalone
+    // não existe, mas quem usa pelo navegador sofre.
+    if (t.clientX < 24 || t.clientX > window.innerWidth - 24) { touchRef.current = null; return; }
+    // Arrastar dentro de um campo não troca o dia.
+    if (e.target.closest('input, textarea, button')) { touchRef.current = null; return; }
+    touchRef.current = { x0: t.clientX, y0: t.clientY };
+  };
+
+  const handleTouchEnd = (e) => {
+    const t0 = touchRef.current;
+    touchRef.current = null;
+    if (!t0) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - t0.x0;
+    const dy = t.clientY - t0.y0;
+    if (Math.abs(dx) <= 60 || Math.abs(dx) <= Math.abs(dy) * 2) return;
+
+    // Esquerda avança um dia, direita volta um dia.
+    const delta = dx < 0 ? 1 : -1;
+    const next = formatDate(addDays(parseDate(dateStr), delta));
+    // Passado é livre; para frente trava em hoje. Sem aviso: a ausência de
+    // movimento é o feedback, e um toast para um gesto acidental é ruído.
+    if (next > todayStr) return;
+    setDayAnim(delta > 0 ? 'right' : 'left');
+    onSelectDate(next);
+  };
 
   return (
-    <div className="px-4 pt-5 max-w-md mx-auto animate-screen-in">
+    <div
+      className="px-4 pt-5 max-w-md mx-auto animate-screen-in"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Header */}
       <header className="flex items-center justify-between mb-7">
         <Logo />
@@ -1283,12 +1271,22 @@ function TodayScreen({
 
       {/* Hero */}
       <div className="mb-6">
-        <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-medium mb-2">
-          Hoje
-        </div>
+        {isToday ? (
+          <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-medium mb-2">
+            Hoje
+          </div>
+        ) : (
+          <button
+            onClick={() => { setDayAnim('right'); onSelectDate(todayStr); }}
+            className="mb-2 flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.18em] text-amber-400/90 font-medium hover:text-amber-300 transition"
+          >
+            {heroLabel}
+            <span className="normal-case tracking-normal text-stone-500">· voltar para hoje</span>
+          </button>
+        )}
         <div className="text-4xl text-stone-100 leading-[1.05]"
              style={{ fontFamily: "'Fraunces', serif", fontWeight: 400 }}>
-          {today.getDate()} de {MONTH_FULL[today.getMonth()]}
+          {day.getDate()} de {MONTH_FULL[day.getMonth()]}
         </div>
         <div className="text-stone-400 text-sm mt-1.5 capitalize">
           {DAY_FULL[dow]}
@@ -1298,6 +1296,102 @@ function TodayScreen({
         )}
       </div>
 
+      <DayEditor
+        key={`${dateStr}:${dataVersion}`}
+        dateStr={dateStr}
+        entry={data.entries[dateStr]}
+        holidaysMap={holidaysMap}
+        lunchConfig={lunchConfig}
+        anim={dayAnim}
+        onSaveEntry={onSaveEntry}
+        onDeleteEntry={onDeleteEntry}
+      />
+
+      {/* Atalho para o mês */}
+      <button
+        onClick={onGoToMonth}
+        className="w-full rounded-2xl border border-stone-800 bg-stone-900/30 p-4 hover:bg-stone-900/60 transition flex items-center justify-between text-left active:scale-[0.99]"
+      >
+        <div>
+          <div className="text-[10.5px] uppercase tracking-[0.16em] text-stone-500">
+            Acumulado · {MONTH_FULL[refMonth.month - 1]} {refMonth.year}
+          </div>
+          <div className="text-2xl text-stone-100 mt-1 tabular-nums"
+               style={{ fontFamily: "'Fraunces', serif" }}>
+            {formatDurationLong(monthlyTotals.total)}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 text-stone-400 text-xs">
+          ver mês
+          <ChevronRight size={14} />
+        </div>
+      </button>
+    </div>
+  );
+}
+
+// Edita EXATAMENTE um dia — o da prop `dateStr`.
+// Renderizada com key={dateStr}:{dataVersion}, então remonta ao trocar de dia
+// e ao importar um backup. É a remontagem que garante que o formulário nunca
+// aponte para outro dia: não existe efeito de sincronização, e portanto não
+// sobra array de dependências para alguém errar depois.
+function DayEditor({ dateStr, entry, holidaysMap, lunchConfig, anim, onSaveEntry, onDeleteEntry }) {
+  const [start, setStart] = useState(entry?.start || '');
+  const [end, setEnd] = useState(entry?.end || '');
+  const [breaks, setBreaks] = useState(entry?.breaks || []);
+  const [note, setNote] = useState(entry?.note || '');
+  const [showSaved, setShowSaved] = useState(false);
+  const initRef = useRef(true);
+  const savedTimer = useRef(null);
+
+  // Este componente remonta a cada troca de dia: não deixar timer pendente.
+  useEffect(() => () => {
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+  }, []);
+
+  // Auto-save: grava a entrada assim que ela for válida, mesmo sem a saída.
+  // Apagar a saída de um dia completo rebaixa o dia para "em aberto".
+  useEffect(() => {
+    if (initRef.current) { initRef.current = false; return; }
+    const payload = buildEntryPayload({ start, end, breaks, note });
+    if (!payload) return;
+    if (sameEntry(entry, payload)) return;
+
+    onSaveEntry(dateStr, payload);
+    setShowSaved(true);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setShowSaved(false), 1600);
+  }, [start, end, breaks, note]); // eslint-disable-line
+
+  const sm = parseHM(start);
+  const em = parseHM(end);
+  const invalidTime = sm != null && em != null && em === sm;
+  const isNightShift = sm != null && em != null && em < sm;
+  const missingEnd = sm != null && !end;
+
+  const dayOT = useMemo(() => {
+    const s = parseHM(start);
+    const e = parseHM(end);
+    if (s == null || e == null || e === s) return null;
+    const set = new Set(holidaysMap.keys());
+    const parsedBreaks = (breaks || [])
+      .map(b => ({ start: parseHM(b.start), end: parseHM(b.end) }))
+      .filter(b => b.start != null && b.end != null);
+    return calculateOvertime(dateStr, s, e, set, lunchConfig, parsedBreaks);
+  }, [start, end, breaks, holidaysMap, dateStr, lunchConfig]);
+
+  const fillStandard = () => { setStart('07:40'); setEnd('17:30'); };
+  const handleClear = () => { setStart(''); setEnd(''); setBreaks([]); setNote(''); onDeleteEntry(dateStr); };
+
+  const addBreak = () => setBreaks([...breaks, { start: '', end: '' }]);
+  const updateBreak = (i, field, val) =>
+    setBreaks(breaks.map((b, idx) => idx === i ? { ...b, [field]: val } : b));
+  const removeBreak = (i) => setBreaks(breaks.filter((_, idx) => idx !== i));
+
+  const hasEntry = !!entry?.start;
+
+  return (
+    <div className={anim === 'left' ? 'animate-day-in-left' : anim === 'right' ? 'animate-day-in-right' : undefined}>
       {/* Card de lançamento */}
       <div className="rounded-3xl border border-stone-800 bg-gradient-to-br from-stone-900/80 to-stone-900/40 p-5 mb-5 relative overflow-hidden">
         <div className="absolute -top-12 -right-10 w-40 h-40 rounded-full bg-amber-500/[0.05] blur-3xl pointer-events-none" />
@@ -1326,6 +1420,13 @@ function TodayScreen({
             <Wand2 size={14} />
             Preencher expediente padrão
           </button>
+
+          {missingEnd && (
+            <div className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-950/40 border border-amber-900/50 text-amber-300 text-xs">
+              <Clock size={13} className="flex-shrink-0" />
+              Falta a saída — não entra no somatório
+            </div>
+          )}
 
           {invalidTime && (
             <div className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-rose-950/50 border border-rose-900/60 text-rose-300 text-xs">
@@ -1407,7 +1508,7 @@ function TodayScreen({
               className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-stone-500 text-xs hover:text-rose-400 transition"
             >
               <Trash2 size={12} />
-              Limpar lançamento de hoje
+              Limpar lançamento do dia
             </button>
           )}
         </div>
@@ -1416,53 +1517,33 @@ function TodayScreen({
       {/* Preview de horas extras */}
       <div className="rounded-3xl border border-stone-800 bg-stone-900/30 p-5 mb-4">
         <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-medium">
-          Horas extras de hoje
+          Horas extras do dia
         </div>
         <div className="flex items-end gap-2 mt-2">
           <div className="text-4xl text-stone-100 leading-none tabular-nums"
                style={{ fontFamily: "'Fraunces', serif", fontWeight: 400 }}>
-            {todayOT ? formatDurationLong(todayOT.total) : '—'}
+            {dayOT ? formatDurationLong(dayOT.total) : '—'}
           </div>
           <div className="text-stone-500 text-xs pb-1">hh:mm</div>
         </div>
 
-        {todayOT && todayOT.total > 0 && (
+        {dayOT && dayOT.total > 0 && (
           <div className="grid grid-cols-2 gap-2 mt-4">
-            {todayOT.d50 > 0 && <StatCard label="50% diurno" value={formatDurationLong(todayOT.d50)} accentClass="bg-amber-400" />}
-            {todayOT.d100 > 0 && <StatCard label="100% diurno" value={formatDurationLong(todayOT.d100)} accentClass="bg-rose-400" />}
-            {todayOT.n50 > 0 && <StatCard label="50% noturno" value={formatDurationLong(todayOT.n50)} accentClass="bg-indigo-400" />}
-            {todayOT.n100 > 0 && <StatCard label="100% noturno" value={formatDurationLong(todayOT.n100)} accentClass="bg-violet-400" />}
+            {dayOT.d50 > 0 && <StatCard label="50% diurno" value={formatDurationLong(dayOT.d50)} accentClass="bg-amber-400" />}
+            {dayOT.d100 > 0 && <StatCard label="100% diurno" value={formatDurationLong(dayOT.d100)} accentClass="bg-rose-400" />}
+            {dayOT.n50 > 0 && <StatCard label="50% noturno" value={formatDurationLong(dayOT.n50)} accentClass="bg-indigo-400" />}
+            {dayOT.n100 > 0 && <StatCard label="100% noturno" value={formatDurationLong(dayOT.n100)} accentClass="bg-violet-400" />}
           </div>
         )}
 
-        {todayOT && todayOT.total === 0 && (
-          <div className="text-xs text-stone-500 mt-2">Hoje não houve horas extras</div>
+        {dayOT && dayOT.total === 0 && (
+          <div className="text-xs text-stone-500 mt-2">Sem horas extras neste dia</div>
         )}
 
-        {!todayOT && (
+        {!dayOT && (
           <div className="text-xs text-stone-500 mt-2">Lance entrada e saída para calcular</div>
         )}
       </div>
-
-      {/* Atalho para o mês */}
-      <button
-        onClick={onGoToMonth}
-        className="w-full rounded-2xl border border-stone-800 bg-stone-900/30 p-4 hover:bg-stone-900/60 transition flex items-center justify-between text-left active:scale-[0.99]"
-      >
-        <div>
-          <div className="text-[10.5px] uppercase tracking-[0.16em] text-stone-500">
-            Acumulado · {MONTH_FULL[refMonth.month - 1]} {refMonth.year}
-          </div>
-          <div className="text-2xl text-stone-100 mt-1 tabular-nums"
-               style={{ fontFamily: "'Fraunces', serif" }}>
-            {formatDurationLong(monthlyTotals.total)}
-          </div>
-        </div>
-        <div className="flex items-center gap-1 text-stone-400 text-xs">
-          ver mês
-          <ChevronRight size={14} />
-        </div>
-      </button>
     </div>
   );
 }
@@ -1620,6 +1701,14 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showCopy, setShowCopy] = useState(false);
 
+  // Incrementado SÓ pelo importJSON. Entra na key da DayEditor para forçar a
+  // remontagem do formulário quando os dados são substituídos por baixo dele —
+  // sem isso, a tela ficaria mostrando o dado de antes do import e a primeira
+  // edição gravaria por cima do backup recém-importado.
+  const [dataVersion, setDataVersion] = useState(0);
+
+  const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
+
   // Carregamento inicial + init dos anos
   useEffect(() => {
     loadData().then((d) => {
@@ -1651,6 +1740,16 @@ export default function App() {
     }
   };
 
+  // Única porta para trocar o dia exibido. O mês de referência acompanha o dia,
+  // então o "Acumulado" e a aba de mês sempre mostram o período a que o dia
+  // exibido pertence.
+  // Identidade estável: a DayScreen usa esta função como dependência do timer
+  // da meia-noite, que sem isso re-assinaria o intervalo a cada render.
+  const selectDate = useCallback((dateStr) => {
+    setSelectedDate(dateStr);
+    setRefMonth(refMonthForDate(dateStr));
+  }, []);
+
   const lunchConfig = LUNCH_CONFIG;
 
   const { start: periodStart, end: periodEnd } = useMemo(
@@ -1673,7 +1772,7 @@ export default function App() {
     for (const day of days) {
       const ds = formatDate(day);
       const e = data.entries[ds];
-      if (!e || !e.start || !e.end) { ots[ds] = null; continue; }
+      if (entryState(e) !== 'complete') { ots[ds] = null; continue; }
       const sm = parseHM(e.start); const em = parseHM(e.end);
       if (sm == null || em == null || em === sm) { ots[ds] = null; continue; }
       const entryBreaks = (e.breaks || [])
@@ -1739,6 +1838,7 @@ export default function App() {
       settings: imported.settings || DEFAULT_SETTINGS,
     };
     persist(withDefaults);
+    setDataVersion((v) => v + 1);
   };
 
 
@@ -1871,12 +1971,15 @@ export default function App() {
       )}
 
       {currentTab === 'today' ? (
-        <TodayScreen
+        <DayScreen
           data={data}
           holidaysMap={holidaysMap}
           refMonth={refMonth}
           monthlyTotals={totals}
           lunchConfig={lunchConfig}
+          dataVersion={dataVersion}
+          selectedDate={selectedDate}
+          onSelectDate={selectDate}
           onSaveEntry={saveEntry}
           onDeleteEntry={deleteEntry}
           onOpenSettings={() => setShowSettings(true)}
@@ -1898,7 +2001,13 @@ export default function App() {
         />
       )}
 
-      <TabBar current={currentTab} onChange={setCurrentTab} />
+      <TabBar
+        current={currentTab}
+        onChange={(tab) => {
+          setCurrentTab(tab);
+          if (tab === 'today') selectDate(formatDate(new Date()));
+        }}
+      />
 
       <EntryEditor
         open={!!editingDate}
