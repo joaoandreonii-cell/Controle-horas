@@ -36,6 +36,10 @@ export const LUNCH_LABEL = '12:00–13:00';
 
 export function calculateOvertime(entryDateStr, startMin, endMin, holidaysSet, lunchCfg, breaks) {
   let d50 = 0, d100 = 0, n50 = 0, n100 = 0;
+  // Minutos repartidos pela data civil de cada um. A ficha da empresa nunca cruza
+  // a meia-noite; o app cruza e joga o turno no dia de início. byDate é a ponte
+  // que a conferência usa para bater os dois — aditivo, quem não precisa ignora.
+  const byDate = {};
   let adjustedEnd = endMin;
   if (endMin <= startMin) adjustedEnd = endMin + 24 * 60;
 
@@ -84,15 +88,25 @@ export function calculateOvertime(entryDateStr, startMin, endMin, holidaysSet, l
 
     const isNight = minuteOfDay >= NIGHT_START || minuteOfDay < NIGHT_END;
 
+    let bucket;
     if (is100) {
-      if (isNight) n100++; else d100++;
+      bucket = isNight ? 'n100' : 'd100';
     } else if (isSaturday) {
-      if (isNight) n50++; else d50++;
+      bucket = isNight ? 'n50' : 'd50';
     } else {
       if (minuteOfDay >= EXP_START && minuteOfDay < effectiveExpEnd) continue;
-      if (isNight) n50++; else d50++;
+      bucket = isNight ? 'n50' : 'd50';
     }
+
+    if (bucket === 'd50') d50++;
+    else if (bucket === 'd100') d100++;
+    else if (bucket === 'n50') n50++;
+    else n100++;
+
+    const slot = byDate[dateStr] || (byDate[dateStr] = { d50: 0, d100: 0, n50: 0, n100: 0, total: 0 });
+    slot[bucket]++;
+    slot.total++;
   }
 
-  return { d50, d100, n50, n100, total: d50 + d100 + n50 + n100 };
+  return { d50, d100, n50, n100, total: d50 + d100 + n50 + n100, byDate };
 }
