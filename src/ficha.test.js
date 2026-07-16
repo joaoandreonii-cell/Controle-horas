@@ -84,6 +84,18 @@ describe('parseFicha — o \\r do fim de linha não atrapalha', () => {
   });
 });
 
+describe('parseFicha — nomes de cliente fora do padrão', () => {
+  it('lê um cliente sem os traços de preenchimento no fim', () => {
+    const r = parseFicha([...META, HEADER, cliente('700 METALURGICA SEM TRACOS'), row()]);
+    expect(r.linhas[0].cliente).toEqual({ codigo: '700', nome: 'METALURGICA SEM TRACOS' });
+  });
+
+  it('preserva um traço no meio do nome, tirando só os do fim', () => {
+    const r = parseFicha([...META, HEADER, cliente('701 POSTO BR-277 KM 50 ----'), row()]);
+    expect(r.linhas[0].cliente).toEqual({ codigo: '701', nome: 'POSTO BR-277 KM 50' });
+  });
+});
+
 describe('parseFicha — agrupamento por cliente', () => {
   it('cada linha carrega o cliente do grupo em que está', () => {
     const r = parseFicha([...META, HEADER,

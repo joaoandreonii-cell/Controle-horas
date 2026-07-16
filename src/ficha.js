@@ -33,11 +33,15 @@ function toISODate(s) {
 
 // 'Cliente:  8766 ESTRELA PAPEL LTDA -----' → { codigo, nome }. Devolve null
 // para os pseudo-clientes ZZ/ZZZ do rodapé (código não numérico) e para o que
-// não for linha de cliente.
+// não for linha de cliente. Pega o nome inteiro e tira os traços de
+// preenchimento do fim — em vez de exigir que eles existam — para não perder um
+// cliente cujo nome encha a linha, nem cortar um traço no meio do nome (BR-277).
+// Funciona porque o parseFicha já limpou o \r do fim, então o $ ancora de novo.
 function parseCliente(s) {
-  const m = /Cliente:\s*(\d+)\s+(.+?)\s*-{2,}/.exec(s);
+  const m = /Cliente:\s*(\d+)\s+(.+)$/.exec(s);
   if (!m) return null;
-  return { codigo: m[1], nome: m[2].trim() };
+  const nome = m[2].replace(/[\s-]+$/, '').trim();
+  return { codigo: m[1], nome };
 }
 
 // Offsets de cada coluna a partir das âncoras do cabeçalho. null se faltar
