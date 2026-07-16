@@ -262,7 +262,31 @@ O ponto vital do projeto. O que esta spec faz e não faz:
 O risco real desta spec não é perder dado: é **afirmar que um mês fecha quando não fecha**. Daí
 a invariante obrigatória e a recusa alta.
 
-*(A verificação em execução vai aqui, com o que foi observado — Task 9 do plano.)*
+**Verificado em execução em 2026-07-16** (Task 9 do plano):
+
+- **Caminho de dados, contra os 7 PDFs reais.** `parseFicha` leu as 185 linhas de dados dos
+  sete arquivos com **zero erros de invariante**, todo cabeçalho com 194 caracteres, todo
+  período e todo cliente corretos — inclusive o produtor com escape octal e o mês com cinco
+  clientes distintos. O `conferir`, exercitado com um `appByDate` derivado e perturbado de
+  propósito, devolveu os quatro status certos (fecha idêntico; fecha por tolerância a +1 min;
+  divergência a +30 min; só na ficha ao remover o dia do app; só no app ao acrescentar um dia).
+- **A tela, no navegador, com upload de um PDF real.** Importar a ficha caiu na aba, saltou
+  para o mês que ela declara (Dezembro 2025), e com o app vazio mostrou os 18 dias como "só na
+  ficha", cada card com o detalhe por categoria e o cliente certo. Navegar para outro mês
+  passou a avisar "esta ficha é de outro mês" e **parou de comparar**. Nenhum erro do app no
+  console (só ruído de uma extensão do navegador, alheia).
+- **Os `entries` do `localStorage` saíram IDÊNTICOS ao que entraram** — `entries_identicas:
+  true`, comparado byte a byte antes e depois do import. O dado insubstituível não foi tocado.
+  As outras chaves do aparelho (de outros apps) também ficaram intactas.
+
+**Uma ressalva honesta sobre o "a aba nunca escreve":** a aba em si não grava, mas o salto
+automático para o mês da ficha muda o `refMonth`, e isso dispara o `ensureYearsInitialized` que
+**já existia** — o mesmo write que acontece ao navegar para um ano novo na aba de mês. No teste,
+ele acrescentou os feriados-padrão de 2025 e `2025` ao `initializedYears` (o `localStorage`
+cresceu de 1393 para 2039 bytes). Isso **nunca toca `entries`**, só feriados (defaults
+regeneráveis), e é **necessário**: sem os feriados de 2025, a classificação de domingos e
+feriados do cálculo do app estaria errada justamente no mês que se está conferindo. A garantia
+que importa — nenhum lançamento criado, alterado ou apagado — vale, e foi observada.
 
 ## Teste
 
