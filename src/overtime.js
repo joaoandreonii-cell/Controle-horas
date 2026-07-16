@@ -24,7 +24,11 @@ const addDays = (d, n) => {
 
 export const EXP_START = 7 * 60 + 40;   // 07:40
 export const EXP_END = 17 * 60 + 30;    // 17:30
-export const NIGHT_START = 23 * 60;
+// Adicional noturno começa às 22:00 (CLT Art. 73 §2º). A ficha da empresa corta
+// aqui, e o app cortava às 23:00 — um bug anterior à conferência, provado por três
+// linhas reais da ficha (25/03 21:30-22:20, 01/04 21:40-22:20, 07/12 21:00-23:59).
+// Não muda o total de dia nenhum; move minutos de 50% diurno para 50% noturno.
+export const NIGHT_START = 22 * 60;
 export const NIGHT_END = 5 * 60;
 
 export const LUNCH_CONFIG = { start: 720, end: 780 }; // 12:00–13:00 fixo

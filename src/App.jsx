@@ -1034,7 +1034,7 @@ function SettingsSheet({ open, onClose, holidays, onUpdate, onAdd, onRemove, onE
 
         <div className="mt-6 pt-5 border-t border-stone-800/60">
           <div className="text-[10px] text-stone-500 leading-relaxed">
-            <strong className="text-stone-400">Regras de cálculo:</strong> domingos e feriados = 100%, demais horas extras = 50%. Adicional noturno: 23:00 às 05:00. Almoço {LUNCH_LABEL} descontado. Período: dia 26 do mês anterior até 25 do mês de referência.
+            <strong className="text-stone-400">Regras de cálculo:</strong> domingos e feriados = 100%, demais horas extras = 50%. Adicional noturno: 22:00 às 05:00. Almoço {LUNCH_LABEL} descontado. Período: dia 26 do mês anterior até 25 do mês de referência.
           </div>
         </div>
       </div>
@@ -1645,7 +1645,7 @@ function MonthScreen({
 
       <div className="mt-8 pt-5 border-t border-stone-900 text-center">
         <div className="text-[10px] text-stone-600 leading-relaxed px-6">
-          Expediente 07:40–12:00 e 13:00–17:30 · Almoço {LUNCH_LABEL} descontado · Adicional noturno 23:00–05:00
+          Expediente 07:40–12:00 e 13:00–17:30 · Almoço {LUNCH_LABEL} descontado · Adicional noturno 22:00–05:00
         </div>
       </div>
     </div>
