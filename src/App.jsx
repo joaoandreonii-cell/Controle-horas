@@ -1895,8 +1895,20 @@ function ConferenciaScreen({
         </div>
       )}
 
+      {/* Ficha reconhecida, mas sem período legível: não dá para saber o mês */}
+      {ficha && !temErros && !fichaRef && (
+        <div className="rounded-2xl border border-amber-900/60 bg-amber-950/20 p-4">
+          <div className="text-amber-200 text-sm font-medium mb-1.5">Período não reconhecido</div>
+          <p className="text-[12.5px] text-stone-400 leading-relaxed">
+            Li a ficha, mas não achei a linha do período (<span className="text-stone-300">Data: … até …</span>),
+            então não sei a que mês ela pertence e não vou comparar. Confira se o PDF é a ficha
+            <span className="text-stone-300"> Ocupação por Funcionário</span> completa.
+          </p>
+        </div>
+      )}
+
       {/* Ficha de outro mês que o selecionado */}
-      {ficha && !temErros && !mesmoMes && fichaRef && (
+      {ficha && !temErros && fichaRef && !mesmoMes && (
         <div className="rounded-2xl border border-amber-900/60 bg-amber-950/20 p-4">
           <div className="text-amber-200 text-sm font-medium mb-1.5">Esta ficha é de outro mês</div>
           <p className="text-[12.5px] text-stone-400 leading-relaxed mb-3">
