@@ -3,13 +3,17 @@ import {
   ChevronLeft, ChevronRight, Settings, X, Plus, Copy,
   Check, Trash2, Calendar, Sparkles, AlertTriangle, Wand2,
   Home, CalendarDays, Pencil, Download, Upload, Moon, FileSpreadsheet,
-  Clock,
+  Clock, FileCheck, FileText,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Analytics } from '@vercel/analytics/react';
 import { parseHM, entryState, buildEntryPayload, sameEntry } from './entry';
 import { refMonthForDate } from './period';
 import { swipeIntent } from './swipe';
+import { calculateOvertime, LUNCH_CONFIG, LUNCH_LABEL } from './overtime';
+import { extractPdfText } from './pdfText';
+import { parseFicha } from './ficha';
+import { conferir } from './conferencia';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
@@ -101,77 +105,7 @@ const formatDurationLong = (mins) => {
   return `${pad(h)}:${pad(m)}`;
 };
 
-const EXP_START = 7 * 60 + 40;   // 07:40
-const EXP_END = 17 * 60 + 30;    // 17:30
-const NIGHT_START = 23 * 60;
-const NIGHT_END = 5 * 60;
-
-const LUNCH_CONFIG = { start: 720, end: 780 }; // 12:00–13:00 fixo
-const LUNCH_LABEL = '12:00–13:00';
 const DEFAULT_SETTINGS = {};
-
-function calculateOvertime(entryDateStr, startMin, endMin, holidaysSet, lunchCfg, breaks) {
-  let d50 = 0, d100 = 0, n50 = 0, n100 = 0;
-  let adjustedEnd = endMin;
-  if (endMin <= startMin) adjustedEnd = endMin + 24 * 60;
-
-  const entryDate = parseDate(entryDateStr);
-
-  // Calcula minutos de pausas extras que caem dentro do expediente (dias úteis).
-  // Esses minutos "estendem" o fim do expediente — o funcionário deve repor o tempo.
-  let breakMinsInSchedule = 0;
-  if (breaks) {
-    for (const b of breaks) {
-      const overlapStart = Math.max(b.start, EXP_START);
-      const overlapEnd = Math.min(b.end, EXP_END);
-      if (overlapStart < overlapEnd) breakMinsInSchedule += overlapEnd - overlapStart;
-    }
-  }
-  // Também desconta a sobreposição da pausa com o almoço (almoço já não conta como expediente)
-  if (lunchCfg && breaks) {
-    for (const b of breaks) {
-      const overlapStart = Math.max(b.start, Math.max(lunchCfg.start, EXP_START));
-      const overlapEnd = Math.min(b.end, Math.min(lunchCfg.end, EXP_END));
-      if (overlapStart < overlapEnd) breakMinsInSchedule -= overlapEnd - overlapStart;
-    }
-  }
-  const effectiveExpEnd = EXP_END + breakMinsInSchedule;
-
-  outer: for (let t = startMin; t < adjustedEnd; t++) {
-    const dayOffset = Math.floor(t / 1440);
-    const minuteOfDay = t - dayOffset * 1440;
-
-    if (lunchCfg && minuteOfDay >= lunchCfg.start && minuteOfDay < lunchCfg.end) continue;
-
-    if (breaks) {
-      for (const b of breaks) {
-        if (minuteOfDay >= b.start && minuteOfDay < b.end) continue outer;
-      }
-    }
-
-    const actualDate = addDays(entryDate, dayOffset);
-    const dow = actualDate.getDay();
-    const dateStr = formatDate(actualDate);
-
-    const isSunday = dow === 0;
-    const isSaturday = dow === 6;
-    const isHoliday = holidaysSet.has(dateStr);
-    const is100 = isSunday || isHoliday;
-
-    const isNight = minuteOfDay >= NIGHT_START || minuteOfDay < NIGHT_END;
-
-    if (is100) {
-      if (isNight) n100++; else d100++;
-    } else if (isSaturday) {
-      if (isNight) n50++; else d50++;
-    } else {
-      if (minuteOfDay >= EXP_START && minuteOfDay < effectiveExpEnd) continue;
-      if (isNight) n50++; else d50++;
-    }
-  }
-
-  return { d50, d100, n50, n100, total: d50 + d100 + n50 + n100 };
-}
 
 function getPeriod(year, month) {
   const start = new Date(year, month - 2, 26);
@@ -504,6 +438,12 @@ function TabBar({ current, onChange }) {
           label="Mês"
           active={current === 'month'}
           onClick={() => onChange('month')}
+        />
+        <TabButton
+          icon={<FileCheck size={19} />}
+          label="Conferir"
+          active={current === 'conferencia'}
+          onClick={() => onChange('conferencia')}
         />
       </div>
     </div>
@@ -1103,7 +1043,7 @@ function SettingsSheet({ open, onClose, holidays, onUpdate, onAdd, onRemove, onE
 
         <div className="mt-6 pt-5 border-t border-stone-800/60">
           <div className="text-[10px] text-stone-500 leading-relaxed">
-            <strong className="text-stone-400">Regras de cálculo:</strong> domingos e feriados = 100%, demais horas extras = 50%. Adicional noturno: 23:00 às 05:00. Almoço {LUNCH_LABEL} descontado. Período: dia 26 do mês anterior até 25 do mês de referência.
+            <strong className="text-stone-400">Regras de cálculo:</strong> domingos e feriados = 100%, demais horas extras = 50%. Adicional noturno: 22:00 às 05:00. Almoço {LUNCH_LABEL} descontado. Período: dia 26 do mês anterior até 25 do mês de referência.
           </div>
         </div>
       </div>
@@ -1714,7 +1654,320 @@ function MonthScreen({
 
       <div className="mt-8 pt-5 border-t border-stone-900 text-center">
         <div className="text-[10px] text-stone-600 leading-relaxed px-6">
-          Expediente 07:40–12:00 e 13:00–17:30 · Almoço {LUNCH_LABEL} descontado · Adicional noturno 23:00–05:00
+          Expediente 07:40–12:00 e 13:00–17:30 · Almoço {LUNCH_LABEL} descontado · Adicional noturno 22:00–05:00
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Conferência da ficha da empresa ─── */
+
+const CONF_STATUS = {
+  fecha:          { label: 'Fecha',       dot: 'bg-emerald-400', text: 'text-emerald-300', ring: 'border-stone-800' },
+  divergencia:    { label: 'Divergência', dot: 'bg-rose-400',    text: 'text-rose-300',    ring: 'border-rose-900/70' },
+  'só na ficha':  { label: 'Só na ficha', dot: 'bg-amber-400',   text: 'text-amber-300',   ring: 'border-amber-900/60' },
+  'só no app':    { label: 'Só no app',   dot: 'bg-sky-400',     text: 'text-sky-300',     ring: 'border-sky-900/60' },
+};
+
+// Minutos com sinal, em h:mm. O zero vira travessão para não poluir a lista.
+const fmtDiff = (min) => {
+  if (min === 0) return '—';
+  return (min > 0 ? '+' : '−') + formatDurationLong(Math.abs(min));
+};
+
+const refMonthLabel = (rm) => `${MONTH_FULL[rm.month - 1]} ${rm.year}`;
+
+function ConfCatRow({ label, app, ficha, diff, tol }) {
+  const ok = Math.abs(diff) <= tol;
+  return (
+    <div className="flex items-center justify-between text-[12px] py-1">
+      <span className="text-stone-500">{label}</span>
+      <div className="flex items-center gap-3 tabular-nums">
+        <span className="text-stone-400 w-12 text-right">{formatDurationLong(app)}</span>
+        <span className="text-stone-600">·</span>
+        <span className="text-stone-400 w-12 text-right">{formatDurationLong(ficha)}</span>
+        <span className={`w-14 text-right ${ok ? 'text-stone-600' : 'text-rose-300 font-medium'}`}>
+          {fmtDiff(diff)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ConfDayCard({ dia, tol }) {
+  const s = CONF_STATUS[dia.status];
+  const [y, m, d] = dia.data.split('-').map(Number);
+  const dow = DAY_SHORT[new Date(y, m - 1, d).getDay()];
+  const detalhe = dia.status !== 'fecha';
+
+  return (
+    <div className={`rounded-2xl border bg-stone-900/40 ${s.ring} p-3.5`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-baseline gap-2">
+          <span className="text-stone-200 tabular-nums text-[15px]">{pad(d)}/{pad(m)}</span>
+          <span className="text-stone-500 text-xs capitalize">{dow}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${s.dot}`} />
+          <span className={`text-[11px] font-medium ${s.text}`}>{s.label}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between mt-2 text-[13px] tabular-nums">
+        <span className="text-stone-500 text-[10.5px] uppercase tracking-[0.14em]">app · ficha</span>
+        <div className="flex items-center gap-3">
+          <span className="text-stone-300 w-12 text-right">{formatDurationLong(dia.app.total)}</span>
+          <span className="text-stone-600">·</span>
+          <span className="text-stone-300 w-12 text-right">{formatDurationLong(dia.ficha.total)}</span>
+          <span className={`w-14 text-right font-medium ${Math.abs(dia.diff.total) <= tol ? 'text-stone-600' : 'text-rose-300'}`}>
+            {fmtDiff(dia.diff.total)}
+          </span>
+        </div>
+      </div>
+
+      {detalhe && (
+        <div className="mt-2.5 pt-2.5 border-t border-stone-800/70">
+          <ConfCatRow label="50% diurno"  app={dia.app.d50}  ficha={dia.ficha.d50}  diff={dia.diff.d50}  tol={tol} />
+          <ConfCatRow label="100% diurno" app={dia.app.d100} ficha={dia.ficha.d100} diff={dia.diff.d100} tol={tol} />
+          <ConfCatRow label="50% noturno" app={dia.app.n50}  ficha={dia.ficha.n50}  diff={dia.diff.n50}  tol={tol} />
+          <ConfCatRow label="100% noturno" app={dia.app.n100} ficha={dia.ficha.n100} diff={dia.diff.n100} tol={tol} />
+        </div>
+      )}
+
+      {dia.clientes.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2.5">
+          {dia.clientes.map((c) => (
+            <span key={c.codigo} className="text-[10.5px] text-stone-400 bg-stone-800/70 rounded-full px-2 py-0.5 truncate max-w-[180px]">
+              {c.nome}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConferenciaScreen({
+  data, days, holidaysSet, lunchConfig, refMonth,
+  ficha, fichaErro, onImportFicha, onClearFicha,
+  onNavigateMonth, onOpenSettings,
+}) {
+  const TOL = 2;
+  const fileRef = useRef(null);
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) onImportFicha(file);
+  };
+
+  // O que o app registrou, repartido por data civil — a mesma conta do dayOTs,
+  // agora somando o byDate para casar com a convenção da ficha.
+  const appByDate = useMemo(() => {
+    const acc = {};
+    for (const day of days) {
+      const ds = formatDate(day);
+      const e = data.entries[ds];
+      if (entryState(e) !== 'complete') continue;
+      const sm = parseHM(e.start);
+      const em = parseHM(e.end);
+      if (sm == null || em == null || em === sm) continue;
+      const breaks = (e.breaks || [])
+        .map((b) => ({ start: parseHM(b.start), end: parseHM(b.end) }))
+        .filter((b) => b.start != null && b.end != null);
+      const r = calculateOvertime(ds, sm, em, holidaysSet, lunchConfig, breaks);
+      for (const [dt, c] of Object.entries(r.byDate)) {
+        const a = acc[dt] || (acc[dt] = { d50: 0, d100: 0, n50: 0, n100: 0, total: 0 });
+        a.d50 += c.d50; a.d100 += c.d100; a.n50 += c.n50; a.n100 += c.n100; a.total += c.total;
+      }
+    }
+    return acc;
+  }, [days, data.entries, holidaysSet, lunchConfig]);
+
+  const temErros = ficha && ficha.erros.length > 0;
+  const fichaRef = ficha?.periodo ? refMonthForDate(ficha.periodo.fim) : null;
+  const mesmoMes = fichaRef && fichaRef.year === refMonth.year && fichaRef.month === refMonth.month;
+
+  const resultado = useMemo(() => {
+    if (!ficha || temErros || !mesmoMes) return null;
+    return conferir({ ficha, appByDate, tolerancia: TOL });
+  }, [ficha, temErros, mesmoMes, appByDate]);
+
+  const resumo = useMemo(() => {
+    if (!resultado) return null;
+    const c = { fecha: 0, divergencia: 0, 'só na ficha': 0, 'só no app': 0 };
+    for (const d of resultado) c[d.status]++;
+    return c;
+  }, [resultado]);
+
+  const importButton = (
+    <>
+      <input ref={fileRef} type="file" accept="application/pdf" onChange={handleFile} className="hidden" />
+      <button
+        onClick={() => fileRef.current?.click()}
+        className="w-full py-3 rounded-xl bg-amber-500/10 border border-amber-700/40 hover:bg-amber-500/15 hover:border-amber-600/50 transition flex items-center justify-center gap-2 text-amber-200 text-sm font-medium"
+      >
+        <Upload size={15} />
+        {ficha ? 'Trocar ficha' : 'Importar ficha PDF'}
+      </button>
+    </>
+  );
+
+  return (
+    <div className="px-4 pt-5 max-w-md mx-auto animate-screen-in">
+      <header className="flex items-center justify-between mb-5">
+        <Logo />
+        <button
+          onClick={onOpenSettings}
+          className="w-9 h-9 rounded-full bg-stone-900 border border-stone-800 hover:bg-stone-800 flex items-center justify-center text-stone-400 hover:text-stone-200 transition"
+          aria-label="Configurações"
+        >
+          <Settings size={15} />
+        </button>
+      </header>
+
+      <section className="mb-5">
+        <div className="flex items-center justify-between gap-3">
+          <button
+            onClick={() => onNavigateMonth(-1)}
+            className="w-10 h-10 rounded-full bg-stone-900 border border-stone-800 hover:bg-stone-800 flex items-center justify-center text-stone-400 transition"
+            aria-label="Mês anterior"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div className="flex-1 text-center">
+            <div className="text-3xl text-stone-100 leading-none capitalize"
+                 style={{ fontFamily: "'Fraunces', serif", fontWeight: 400 }}>
+              {MONTH_FULL[refMonth.month - 1]}
+            </div>
+            <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 mt-1.5">
+              {refMonth.year} · conferência
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigateMonth(1)}
+            className="w-10 h-10 rounded-full bg-stone-900 border border-stone-800 hover:bg-stone-800 flex items-center justify-center text-stone-400 transition"
+            aria-label="Próximo mês"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </section>
+
+      <section className="mb-5">{importButton}</section>
+
+      {/* Erro de leitura do PDF */}
+      {fichaErro && (
+        <div className="rounded-2xl border border-rose-900/70 bg-rose-950/20 p-4 text-sm text-rose-200 flex items-start gap-2">
+          <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
+          <span>{fichaErro}</span>
+        </div>
+      )}
+
+      {/* Sem ficha ainda */}
+      {!ficha && !fichaErro && (
+        <div className="text-center px-6 py-10 text-stone-500">
+          <FileText size={30} className="mx-auto mb-3 opacity-40" />
+          <p className="text-sm leading-relaxed">
+            Importe a ficha <span className="text-stone-400">Ocupação por Funcionário</span> em PDF
+            para conferir, dia a dia, contra o que você registrou.
+          </p>
+        </div>
+      )}
+
+      {/* Ficha recusada: cabeçalho ou linha que não fecha a invariante */}
+      {temErros && (
+        <div className="rounded-2xl border border-rose-900/70 bg-rose-950/20 p-4">
+          <div className="flex items-center gap-2 text-rose-200 text-sm font-medium mb-2">
+            <AlertTriangle size={16} />
+            Ficha não conferida
+          </div>
+          <p className="text-[12.5px] text-stone-400 leading-relaxed mb-3">
+            O documento não foi reconhecido com segurança, então não vou compará-lo — um
+            relatório errado seria pior que nenhum. O que apareceu:
+          </p>
+          <ul className="space-y-1.5">
+            {ficha.erros.slice(0, 8).map((er, i) => (
+              <li key={i} className="text-[12px] text-rose-200/80 leading-snug">• {er.msg}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Ficha reconhecida, mas sem período legível: não dá para saber o mês */}
+      {ficha && !temErros && !fichaRef && (
+        <div className="rounded-2xl border border-amber-900/60 bg-amber-950/20 p-4">
+          <div className="text-amber-200 text-sm font-medium mb-1.5">Período não reconhecido</div>
+          <p className="text-[12.5px] text-stone-400 leading-relaxed">
+            Li a ficha, mas não achei a linha do período (<span className="text-stone-300">Data: … até …</span>),
+            então não sei a que mês ela pertence e não vou comparar. Confira se o PDF é a ficha
+            <span className="text-stone-300"> Ocupação por Funcionário</span> completa.
+          </p>
+        </div>
+      )}
+
+      {/* Ficha de outro mês que o selecionado */}
+      {ficha && !temErros && fichaRef && !mesmoMes && (
+        <div className="rounded-2xl border border-amber-900/60 bg-amber-950/20 p-4">
+          <div className="text-amber-200 text-sm font-medium mb-1.5">Esta ficha é de outro mês</div>
+          <p className="text-[12.5px] text-stone-400 leading-relaxed mb-3">
+            O PDF cobre <span className="text-stone-300 capitalize">{refMonthLabel(fichaRef)}</span>, e você
+            está em <span className="text-stone-300 capitalize">{refMonthLabel(refMonth)}</span>. Para
+            comparar, vá para o mês da ficha.
+          </p>
+        </div>
+      )}
+
+      {/* Resultado da conferência */}
+      {resultado && (
+        <>
+          {(ficha.tecnico || ficha.periodo) && (
+            <div className="text-[11px] text-stone-500 mb-3 px-1">
+              {ficha.tecnico && <span className="text-stone-400">{ficha.tecnico}</span>}
+              {ficha.tecnico && ficha.periodo && ' · '}
+              {ficha.periodo && `${formatDateBR(ficha.periodo.inicio)} a ${formatDateBR(ficha.periodo.fim)}`}
+            </div>
+          )}
+
+          {resumo && (
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {['fecha', 'divergencia', 'só na ficha', 'só no app'].map((k) => (
+                <div key={k} className="rounded-xl border border-stone-800 bg-stone-900/50 py-2.5 text-center">
+                  <div className={`text-xl tabular-nums ${resumo[k] ? CONF_STATUS[k].text : 'text-stone-600'}`}
+                       style={{ fontFamily: "'Fraunces', serif" }}>
+                    {resumo[k]}
+                  </div>
+                  <div className="text-[9px] uppercase tracking-[0.1em] text-stone-500 mt-0.5 leading-tight">
+                    {CONF_STATUS[k].label}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {resultado.length === 0 ? (
+            <div className="text-center py-8 text-stone-500 text-sm">
+              Nenhuma hora extra neste período — nem na ficha, nem no app.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {resultado.map((dia) => <ConfDayCard key={dia.data} dia={dia} tol={TOL} />)}
+            </div>
+          )}
+
+          <div className="mt-5 text-center">
+            <button onClick={onClearFicha} className="text-[11px] text-stone-500 hover:text-stone-300 transition inline-flex items-center gap-1">
+              <X size={12} /> limpar ficha
+            </button>
+          </div>
+        </>
+      )}
+
+      <div className="mt-8 pt-5 border-t border-stone-900 text-center">
+        <div className="text-[10px] text-stone-600 leading-relaxed px-6">
+          A ficha some ao recarregar — ela fica só na memória, nunca é gravada. Comparação por
+          data civil, tolerância de {TOL} min.
         </div>
       </div>
     </div>
@@ -1735,6 +1988,12 @@ export default function App() {
   const [editingDate, setEditingDate] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showCopy, setShowCopy] = useState(false);
+
+  // A ficha importada vive SÓ aqui, na memória. Nunca vai para o localStorage:
+  // a cota é dos lançamentos, e um PDF não pode competir com eles nem sobreviver
+  // a um recarregamento. Ao recarregar, o técnico reimporta.
+  const [ficha, setFicha] = useState(null);
+  const [fichaErro, setFichaErro] = useState(null);
 
   // Incrementado SÓ pelo importJSON. Entra na key da DayEditor para forçar a
   // remontagem do formulário quando os dados são substituídos por baixo dele —
@@ -1977,6 +2236,25 @@ export default function App() {
     XLSX.writeFile(wb, `horas-plus-${formatDate(new Date())}.xlsx`);
   };
 
+  // Lê o PDF da ficha e o guarda na memória. Ao reconhecer o período, salta para
+  // o mês dele — importar uma ficha é dizer "quero conferir este mês". Não toca
+  // em nada gravado: só lê o arquivo escolhido.
+  const importFicha = async (file) => {
+    setFichaErro(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const strings = await extractPdfText(buffer);
+      const parsed = parseFicha(strings);
+      setFicha(parsed);
+      if (parsed.periodo?.fim) setRefMonth(refMonthForDate(parsed.periodo.fim));
+    } catch {
+      setFicha(null);
+      setFichaErro('Não foi possível ler o PDF. O arquivo pode estar corrompido.');
+    }
+  };
+
+  const clearFicha = () => { setFicha(null); setFichaErro(null); };
+
   const editingDay = editingDate ? parseDate(editingDate) : null;
   const editingEntry = editingDate ? data.entries[editingDate] : null;
   const editingHolidayName = editingDate ? holidaysMap.get(editingDate) : null;
@@ -2005,7 +2283,7 @@ export default function App() {
         </div>
       )}
 
-      {currentTab === 'today' ? (
+      {currentTab === 'today' && (
         <DayScreen
           data={data}
           holidaysMap={holidaysMap}
@@ -2020,7 +2298,8 @@ export default function App() {
           onOpenSettings={() => setShowSettings(true)}
           onGoToMonth={() => setCurrentTab('month')}
         />
-      ) : (
+      )}
+      {currentTab === 'month' && (
         <MonthScreen
           data={data}
           days={days}
@@ -2033,6 +2312,21 @@ export default function App() {
           onOpenSettings={() => setShowSettings(true)}
           onOpenCopy={() => setShowCopy(true)}
           onExportXLSX={exportXLSX}
+        />
+      )}
+      {currentTab === 'conferencia' && (
+        <ConferenciaScreen
+          data={data}
+          days={days}
+          holidaysSet={holidaysSet}
+          lunchConfig={lunchConfig}
+          refMonth={refMonth}
+          ficha={ficha}
+          fichaErro={fichaErro}
+          onImportFicha={importFicha}
+          onClearFicha={clearFicha}
+          onNavigateMonth={navigateMonth}
+          onOpenSettings={() => setShowSettings(true)}
         />
       )}
 

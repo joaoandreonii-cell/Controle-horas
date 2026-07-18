@@ -5,3 +5,7 @@ dist/
 .playwright-mcp/
 *.timestamp-*
 .vercel
+
+# Fichas reais da empresa: nome de cliente, numero de OF e nome do tecnico.
+# Servem de material de verificacao local e nunca entram no repositorio.
+exemplos_ficha_horas/
