@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, Settings, X, Plus, Copy,
   Check, Trash2, Calendar, Sparkles, AlertTriangle, Wand2,
   Home, CalendarDays, Pencil, Download, Upload, Moon, FileSpreadsheet,
-  Clock, FileCheck, FileText,
+  Clock, FileCheck, FileText, ChevronDown,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Analytics } from '@vercel/analytics/react';
@@ -1664,10 +1664,31 @@ function MonthScreen({
 /* ─── Conferência da ficha da empresa ─── */
 
 const CONF_STATUS = {
-  fecha:          { label: 'Fecha',       dot: 'bg-emerald-400', text: 'text-emerald-300', ring: 'border-stone-800' },
-  divergencia:    { label: 'Divergência', dot: 'bg-rose-400',    text: 'text-rose-300',    ring: 'border-rose-900/70' },
-  'só na ficha':  { label: 'Só na ficha', dot: 'bg-amber-400',   text: 'text-amber-300',   ring: 'border-amber-900/60' },
-  'só no app':    { label: 'Só no app',   dot: 'bg-sky-400',     text: 'text-sky-300',     ring: 'border-sky-900/60' },
+  fecha:          { label: 'Fecha',       dot: 'bg-emerald-400', text: 'text-emerald-300', ring: 'border-stone-800',    chip: 'border-emerald-800/70 bg-emerald-950/40' },
+  divergencia:    { label: 'Divergência', dot: 'bg-rose-400',    text: 'text-rose-300',    ring: 'border-rose-900/70',  chip: 'border-rose-800/70 bg-rose-950/40' },
+  'só na ficha':  { label: 'Só na ficha', dot: 'bg-amber-400',   text: 'text-amber-300',   ring: 'border-amber-900/60', chip: 'border-amber-800/70 bg-amber-950/40' },
+  'só no app':    { label: 'Só no app',   dot: 'bg-sky-400',     text: 'text-sky-300',     ring: 'border-sky-900/60',   chip: 'border-sky-800/70 bg-sky-950/40' },
+};
+
+const CONF_ORDEM = ['fecha', 'divergencia', 'só na ficha', 'só no app'];
+
+// As mesmas quatro categorias, com os pontos de cor da tela de mês — a
+// conferência fala o mesmo dialeto visual do resto do app.
+const CONF_CATS = [
+  { k: 'd50',  label: '50% diurno',   dot: 'bg-amber-400' },
+  { k: 'd100', label: '100% diurno',  dot: 'bg-rose-400' },
+  { k: 'n50',  label: '50% noturno',  dot: 'bg-indigo-400' },
+  { k: 'n100', label: '100% noturno', dot: 'bg-violet-400' },
+];
+
+// O tom do veredito: brilho do herói, glifo entre os totais e frase são um
+// sinal só. A cor vem dos DIAS, não da diferença total — dois desvios opostos
+// podem se anular no total sem que nada esteja certo.
+const CONF_TONS = {
+  confere: { glifo: '=', cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-stone-800',    faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
+  quase:   { glifo: '=', cor: 'text-amber-300',   brilho: 'bg-amber-500/[0.05]',   borda: 'border-amber-900/40', faixa: 'bg-amber-950/30 border-amber-900/40 text-amber-200' },
+  menos:   { glifo: '≠', cor: 'text-rose-300',    brilho: 'bg-rose-500/[0.06]',    borda: 'border-rose-900/50',   faixa: 'bg-rose-950/30 border-rose-900/50 text-rose-200' },
+  mais:    { glifo: '≠', cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-emerald-900/40', faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
 };
 
 // Minutos com sinal, em h:mm. O zero vira travessão para não poluir a lista.
@@ -1676,18 +1697,44 @@ const fmtDiff = (min) => {
   return (min > 0 ? '+' : '−') + formatDurationLong(Math.abs(min));
 };
 
+// A cor do sinal, não da magnitude: dentro da tolerância não tem lado, fica
+// neutro. Fora dela, a ficha reconhecendo mais é notícia boa — verde; o app
+// tendo mais do que a ficha reconheceu pede atenção — vermelho. diff segue a
+// convenção de conferencia.js: app − ficha.
+function confDiffClass(diff, tol, { medium = false, neutral = 'text-stone-600' } = {}) {
+  if (Math.abs(diff) <= tol) return neutral;
+  const cor = diff > 0 ? 'text-rose-300' : 'text-emerald-300';
+  return medium ? `${cor} font-medium` : cor;
+}
+
 const refMonthLabel = (rm) => `${MONTH_FULL[rm.month - 1]} ${rm.year}`;
 
-function ConfCatRow({ label, app, ficha, diff, tol }) {
-  const ok = Math.abs(diff) <= tol;
+// Período da ficha curto o bastante para dividir uma linha com o nome do
+// técnico no celular: o ano só aparece uma vez quando é o mesmo dos dois lados.
+const confPeriodoLabel = (p) => {
+  const [yi] = p.inicio.split('-');
+  const [yf] = p.fim.split('-');
+  if (yi !== yf) return `${formatDateBR(p.inicio)} a ${formatDateBR(p.fim)}`;
+  const [, m, d] = p.inicio.split('-');
+  return `${d}/${m} a ${formatDateBR(p.fim)}`;
+};
+
+const confDow = (data) => {
+  const [y, m, d] = data.split('-').map(Number);
+  return DAY_SHORT[new Date(y, m - 1, d).getDay()];
+};
+
+function ConfCatRow({ label, dot, app, ficha, diff, tol }) {
   return (
     <div className="flex items-center justify-between text-[12px] py-1">
-      <span className="text-stone-500">{label}</span>
+      <span className="flex items-center gap-1.5 text-stone-500">
+        {dot && <span className={`inline-block w-1.5 h-1.5 rounded-full ${dot} opacity-70`} />}
+        {label}
+      </span>
       <div className="flex items-center gap-3 tabular-nums">
         <span className="text-stone-400 w-12 text-right">{formatDurationLong(app)}</span>
-        <span className="text-stone-600">·</span>
         <span className="text-stone-400 w-12 text-right">{formatDurationLong(ficha)}</span>
-        <span className={`w-14 text-right ${ok ? 'text-stone-600' : 'text-rose-300 font-medium'}`}>
+        <span className={`w-14 text-right ${confDiffClass(diff, tol, { medium: true })}`}>
           {fmtDiff(diff)}
         </span>
       </div>
@@ -1695,56 +1742,243 @@ function ConfCatRow({ label, app, ficha, diff, tol }) {
   );
 }
 
-function ConfDayCard({ dia, tol }) {
-  const s = CONF_STATUS[dia.status];
-  const [y, m, d] = dia.data.split('-').map(Number);
-  const dow = DAY_SHORT[new Date(y, m - 1, d).getDay()];
-  const detalhe = dia.status !== 'fecha';
-
+// A tabela app · ficha · dif com cabeçalho de coluna. Só entram categorias com
+// minutos de algum lado; o total só quando há mais de uma linha — repetir uma
+// linha única como "Total" não informaria nada. comTotal={false} força ocultar
+// (o herói já mostra os totais em número grande).
+function ConfTabela({ app, ficha, diff, tol, comTotal }) {
+  const linhas = CONF_CATS.filter((c) => app[c.k] > 0 || ficha[c.k] > 0);
+  const mostrarTotal = comTotal === undefined ? linhas.length >= 2 : comTotal;
   return (
-    <div className={`rounded-2xl border bg-stone-900/40 ${s.ring} p-3.5`}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-baseline gap-2">
-          <span className="text-stone-200 tabular-nums text-[15px]">{pad(d)}/{pad(m)}</span>
-          <span className="text-stone-500 text-xs capitalize">{dow}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${s.dot}`} />
-          <span className={`text-[11px] font-medium ${s.text}`}>{s.label}</span>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between mt-2 text-[13px] tabular-nums">
-        <span className="text-stone-500 text-[10.5px] uppercase tracking-[0.14em]">app · ficha</span>
+    <div>
+      <div className="flex items-center justify-end text-[9.5px] uppercase tracking-[0.12em] text-stone-600 font-medium">
         <div className="flex items-center gap-3">
-          <span className="text-stone-300 w-12 text-right">{formatDurationLong(dia.app.total)}</span>
-          <span className="text-stone-600">·</span>
-          <span className="text-stone-300 w-12 text-right">{formatDurationLong(dia.ficha.total)}</span>
-          <span className={`w-14 text-right font-medium ${Math.abs(dia.diff.total) <= tol ? 'text-stone-600' : 'text-rose-300'}`}>
-            {fmtDiff(dia.diff.total)}
-          </span>
+          <span className="w-12 text-right">App</span>
+          <span className="w-12 text-right">Ficha</span>
+          <span className="w-14 text-right">Dif</span>
         </div>
       </div>
-
-      {detalhe && (
-        <div className="mt-2.5 pt-2.5 border-t border-stone-800/70">
-          <ConfCatRow label="50% diurno"  app={dia.app.d50}  ficha={dia.ficha.d50}  diff={dia.diff.d50}  tol={tol} />
-          <ConfCatRow label="100% diurno" app={dia.app.d100} ficha={dia.ficha.d100} diff={dia.diff.d100} tol={tol} />
-          <ConfCatRow label="50% noturno" app={dia.app.n50}  ficha={dia.ficha.n50}  diff={dia.diff.n50}  tol={tol} />
-          <ConfCatRow label="100% noturno" app={dia.app.n100} ficha={dia.ficha.n100} diff={dia.diff.n100} tol={tol} />
-        </div>
-      )}
-
-      {dia.clientes.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2.5">
-          {dia.clientes.map((c) => (
-            <span key={c.codigo} className="text-[10.5px] text-stone-400 bg-stone-800/70 rounded-full px-2 py-0.5 truncate max-w-[180px]">
-              {c.nome}
-            </span>
-          ))}
+      {linhas.map((c) => (
+        <ConfCatRow key={c.k} label={c.label} dot={c.dot} app={app[c.k]} ficha={ficha[c.k]} diff={diff[c.k]} tol={tol} />
+      ))}
+      {mostrarTotal && (
+        <div className="flex items-center justify-between text-[12px] pt-1.5 mt-1 border-t border-stone-800/70 font-medium">
+          <span className="text-stone-400">Total</span>
+          <div className="flex items-center gap-3 tabular-nums">
+            <span className="text-stone-200 w-12 text-right">{formatDurationLong(app.total)}</span>
+            <span className="text-stone-200 w-12 text-right">{formatDurationLong(ficha.total)}</span>
+            <span className={`w-14 text-right ${confDiffClass(diff.total, tol, { neutral: 'text-stone-500' })}`}>{fmtDiff(diff.total)}</span>
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+function ConfClientes({ clientes }) {
+  if (!clientes.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2.5">
+      {clientes.map((c) => (
+        <span key={c.codigo} className="text-[10.5px] text-stone-400 bg-stone-800/70 rounded-full px-2 py-0.5 truncate max-w-[180px]">
+          {c.nome}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// Rótulos curtos das quatro colunas da ficha, para os apontamentos falarem o
+// dialeto do papel que o técnico tem na mão (H 50%, H 50% Not…).
+const FICHA_CATS = [
+  { k: 'h50',    rot: '50%' },
+  { k: 'h100',   rot: '100%' },
+  { k: 'h50Not', rot: '50% not' },
+  { k: 'h100Not', rot: '100% not' },
+];
+
+const confDataCurta = (iso) => {
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
+};
+
+// O lançamento cru do app que alimentou o dia — entrada, saída, pausas e
+// observação. É o lado "você" da acareação: o que conferir com a memória.
+function ConfLancamentos({ lanc }) {
+  return (
+    <div className="mt-3">
+      <div className="text-[9.5px] uppercase tracking-[0.12em] text-stone-600 font-medium mb-0.5">
+        Lançamento · app
+      </div>
+      {lanc.map((l, i) => {
+        const tag = !l.end
+          ? 'em aberto — não conta'
+          : l.deOntem ? `lançado em ${confDataCurta(l.de)}`
+          : l.viraNoite ? 'cruza a meia-noite' : null;
+        return (
+          <div key={i} className="py-0.5">
+            <div className="flex items-center justify-between gap-2 text-[12px]">
+              <span className="tabular-nums text-stone-300">{l.start} → {l.end || '?'}</span>
+              {tag && <span className="text-[10.5px] text-stone-500 text-right">{tag}</span>}
+            </div>
+            {l.breaks && l.breaks.length > 0 && (
+              <div className="text-[10.5px] text-stone-500 tabular-nums">
+                pausa {l.breaks.map((b) => `${b.start}–${b.end}`).join(' · ')}
+              </div>
+            )}
+            {l.note && <div className="text-[10.5px] text-stone-500 italic truncate">“{l.note}”</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Os apontamentos da ficha — cada intervalo que a empresa registrou, com a
+// categoria nas palavras das colunas do PDF. É o lado "empresa".
+function ConfApontamentos({ linhas }) {
+  const codigos = new Set(linhas.map((l) => l.cliente?.codigo).filter(Boolean));
+  const multiCliente = codigos.size > 1;
+  // Ordem cronológica, não a do PDF (que agrupa por cliente): para achar o
+  // buraco do dia, a linha do tempo é o que ajuda. 'HH:MM' ordena como string.
+  const ordenadas = [...linhas].sort((a, b) => (a.hIni < b.hIni ? -1 : a.hIni > b.hIni ? 1 : 0));
+  return (
+    <div className="mt-3">
+      <div className="text-[9.5px] uppercase tracking-[0.12em] text-stone-600 font-medium mb-0.5">
+        Apontamentos · ficha
+      </div>
+      {ordenadas.map((l, i) => {
+        const cats = FICHA_CATS.filter((c) => l[c.k] > 0);
+        const total = l.h50 + l.h100 + l.h50Not + l.h100Not;
+        return (
+          <div key={i} className="py-0.5">
+            <div className="flex items-center justify-between gap-2 text-[12px]">
+              <span className="tabular-nums text-stone-300">{l.hIni} → {l.hFim}</span>
+              <span className="flex items-baseline gap-1.5">
+                {cats.length === 1 && <span className="text-[10.5px] text-stone-500">{cats[0].rot}</span>}
+                <span className="tabular-nums text-stone-200">{formatDurationLong(total)}</span>
+              </span>
+            </div>
+            {cats.length > 1 && (
+              <div className="text-[10.5px] text-stone-500 tabular-nums">
+                {cats.map((c) => `${c.rot} ${formatDurationLong(l[c.k])}`).join(' · ')}
+              </div>
+            )}
+            {multiCliente && l.cliente && (
+              <div className="text-[10.5px] text-stone-500 truncate">{l.cliente.nome}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Cada dia é um card expansível: fechado, uma linha com o número-manchete do
+// veredito; aberto, a prova completa — tabela, lançamento do app e apontamentos
+// da ficha, os dois registros crus lado a lado para achar o furo. Dias com
+// problema já nascem abertos: são o que se veio ver.
+function ConfDia({ dia, lanc, tol }) {
+  const fecha = dia.status === 'fecha';
+  const [aberto, setAberto] = useState(!fecha);
+  const s = CONF_STATUS[dia.status];
+  const [, m, d] = dia.data.split('-').map(Number);
+  const soFicha = dia.status === 'só na ficha';
+  const soApp = dia.status === 'só no app';
+  const temAberto = lanc.some((l) => !l.end);
+
+  const manchete = fecha
+    ? { valor: formatDurationLong(dia.app.total), cor: 'text-stone-400' }
+    : dia.status === 'divergencia'
+      ? { valor: fmtDiff(dia.diff.total), cor: confDiffClass(dia.diff.total, tol, { medium: true, neutral: 'text-stone-300 font-medium' }) }
+      : soFicha
+        ? { valor: formatDurationLong(dia.ficha.total), cor: 'text-amber-300 font-medium' }
+        : { valor: formatDurationLong(dia.app.total), cor: 'text-sky-300 font-medium' };
+
+  const fichaFmt = (
+    <span className="text-amber-200 font-medium tabular-nums">{formatDurationLong(dia.ficha.total)}</span>
+  );
+
+  return (
+    <div className={fecha
+      ? 'rounded-xl border border-stone-800/60 bg-stone-900/20'
+      : `rounded-2xl border bg-stone-900/40 ${s.ring}`}>
+      <button
+        onClick={() => setAberto(!aberto)}
+        aria-expanded={aberto}
+        className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left"
+      >
+        <span className="flex items-baseline gap-2 min-w-0">
+          <span className={`tabular-nums ${fecha ? 'text-stone-300 text-[13px]' : 'text-stone-200 text-[14px]'}`}>
+            {pad(d)}/{pad(m)}
+          </span>
+          <span className={`text-[11px] capitalize ${fecha ? 'text-stone-600' : 'text-stone-500'}`}>
+            {confDow(dia.data)}
+          </span>
+        </span>
+        <span className="flex items-center gap-2 flex-shrink-0">
+          {!fecha && (
+            <span className="flex items-center gap-1.5">
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${s.dot}`} />
+              <span className={`text-[11px] font-medium ${s.text}`}>{s.label}</span>
+            </span>
+          )}
+          <span className={`tabular-nums text-[13px] ${manchete.cor}`}>{manchete.valor}</span>
+          {fecha && <Check size={13} strokeWidth={2.5} className="text-emerald-500/80" />}
+          <ChevronDown size={13} className={`text-stone-600 transition-transform ${aberto ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+
+      {aberto && (
+        <div className="px-3.5 pb-3.5 pt-2 border-t border-stone-800/60 animate-fade-in">
+          {soFicha && (
+            <p className="text-[12.5px] text-stone-400 leading-relaxed">
+              {temAberto ? (
+                <>Seu lançamento ficou em aberto — sem a saída, o dia não entra no somatório. A ficha reconhece {fichaFmt}.</>
+              ) : lanc.length > 0 ? (
+                <>Você lançou o dia, mas sem horas extras — a ficha reconhece {fichaFmt}. Compare os horários abaixo.</>
+              ) : (
+                <>Sem lançamento no app neste dia — a ficha reconhece {fichaFmt}. Confira se faltou lançar.</>
+              )}
+            </p>
+          )}
+          {soApp && (
+            <p className="text-[12.5px] text-stone-400 leading-relaxed">
+              Este dia não está na ficha — você lançou{' '}
+              <span className="text-sky-200 font-medium tabular-nums">{formatDurationLong(dia.app.total)}</span> no app.
+            </p>
+          )}
+
+          {(fecha || dia.status === 'divergencia') && (
+            <ConfTabela app={dia.app} ficha={dia.ficha} diff={dia.diff} tol={tol} />
+          )}
+
+          {lanc.length > 0 && <ConfLancamentos lanc={lanc} />}
+          {dia.linhasFicha.length > 0 && <ConfApontamentos linhas={dia.linhasFicha} />}
+
+          <ConfClientes clientes={dia.clientes} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfChip({ status, ativo, onClick, label, n }) {
+  const s = status ? CONF_STATUS[status] : null;
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={ativo}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${
+        ativo
+          ? s ? `${s.chip} ${s.text}` : 'border-stone-600 bg-stone-800 text-stone-100'
+          : 'border-stone-800 bg-stone-900/40 text-stone-500 hover:text-stone-300 hover:border-stone-700'
+      }`}
+    >
+      {s && <span className={`inline-block w-1.5 h-1.5 rounded-full ${s.dot} ${ativo ? '' : 'opacity-50'}`} />}
+      {label}
+      <span className={ativo ? 'opacity-60' : 'text-stone-600'}>{n}</span>
+    </button>
   );
 }
 
@@ -1763,16 +1997,32 @@ function ConferenciaScreen({
   };
 
   // O que o app registrou, repartido por data civil — a mesma conta do dayOTs,
-  // agora somando o byDate para casar com a convenção da ficha.
-  const appByDate = useMemo(() => {
+  // agora somando o byDate para casar com a convenção da ficha. Junto, o
+  // lançamento cru que alimentou cada data, para o detalhe expandido do dia:
+  // entram também o dia lançado sem extras e o dia em aberto, porque explicam
+  // um "só na ficha" melhor que a ausência.
+  const { appByDate, lancPorData } = useMemo(() => {
     const acc = {};
+    const lancs = {};
+    const registra = (dt, l) => { (lancs[dt] || (lancs[dt] = [])).push(l); };
     for (const day of days) {
       const ds = formatDate(day);
       const e = data.entries[ds];
-      if (entryState(e) !== 'complete') continue;
+      const estado = entryState(e);
+      if (estado === 'empty') continue;
+      if (estado === 'partial') {
+        registra(ds, { de: ds, start: e.start, end: null, note: e.note });
+        continue;
+      }
       const sm = parseHM(e.start);
       const em = parseHM(e.end);
       if (sm == null || em == null || em === sm) continue;
+      const viraNoite = em < sm;
+      const cru = { de: ds, start: e.start, end: e.end, breaks: e.breaks || [], note: e.note, viraNoite };
+      registra(ds, cru);
+      // Turno que cruza a meia-noite sempre deixa minutos no dia civil seguinte
+      // (antes das 05:00 tudo conta) — o lançamento aparece nos dois dias.
+      if (viraNoite) registra(formatDate(addDays(day, 1)), { ...cru, deOntem: true });
       const breaks = (e.breaks || [])
         .map((b) => ({ start: parseHM(b.start), end: parseHM(b.end) }))
         .filter((b) => b.start != null && b.end != null);
@@ -1782,7 +2032,7 @@ function ConferenciaScreen({
         a.d50 += c.d50; a.d100 += c.d100; a.n50 += c.n50; a.n100 += c.n100; a.total += c.total;
       }
     }
-    return acc;
+    return { appByDate: acc, lancPorData: lancs };
   }, [days, data.entries, holidaysSet, lunchConfig]);
 
   const temErros = ficha && ficha.erros.length > 0;
@@ -1801,18 +2051,57 @@ function ConferenciaScreen({
     return c;
   }, [resultado]);
 
-  const importButton = (
-    <>
-      <input ref={fileRef} type="file" accept="application/pdf" onChange={handleFile} className="hidden" />
-      <button
-        onClick={() => fileRef.current?.click()}
-        className="w-full py-3 rounded-xl bg-amber-500/10 border border-amber-700/40 hover:bg-amber-500/15 hover:border-amber-600/50 transition flex items-center justify-center gap-2 text-amber-200 text-sm font-medium"
-      >
-        <Upload size={15} />
-        {ficha ? 'Trocar ficha' : 'Importar ficha PDF'}
-      </button>
-    </>
-  );
+  // Os somatórios do período, dos dois lados — o número que responde "a
+  // empresa me reconheceu tudo?". Soma os dias comparados, por categoria.
+  const totais = useMemo(() => {
+    if (!resultado) return null;
+    const app = { d50: 0, d100: 0, n50: 0, n100: 0, total: 0 };
+    const fic = { d50: 0, d100: 0, n50: 0, n100: 0, total: 0 };
+    const diff = {};
+    for (const dia of resultado) {
+      for (const k of Object.keys(app)) {
+        app[k] += dia.app[k];
+        fic[k] += dia.ficha[k];
+      }
+    }
+    for (const k of Object.keys(app)) diff[k] = app[k] - fic[k];
+    return { app, ficha: fic, diff };
+  }, [resultado]);
+
+  // Filtro da lista por veredito. Derivado com guarda: se a ficha trocar e o
+  // status filtrado sumir, cai para "todos" sem precisar de efeito.
+  const [filtro, setFiltro] = useState(null);
+  const filtroAtivo = filtro && resumo && resumo[filtro] > 0 ? filtro : null;
+  const listaDias = resultado
+    ? (filtroAtivo ? resultado.filter((d) => d.status === filtroAtivo) : resultado)
+    : null;
+  const statusPresentes = resumo ? CONF_ORDEM.filter((k) => resumo[k] > 0) : [];
+
+  // O veredito do herói. A cor vem dos dias (ver CONF_TONS); a frase diz em
+  // palavras o que o glifo resume.
+  let tom = null;
+  let frase = null;
+  if (totais && resumo) {
+    const problemas = resultado.length - resumo.fecha;
+    const dTot = totais.diff.total;
+    if (problemas === 0) {
+      tom = CONF_TONS.confere;
+      frase = 'Tudo confere — o total e cada dia fecham com a ficha.';
+    } else if (Math.abs(dTot) <= TOL) {
+      tom = CONF_TONS.quase;
+      frase = `O total fecha, mas ${problemas === 1 ? '1 dia não bate' : `${problemas} dias não batem`} — veja na lista.`;
+    } else if (dTot > 0) {
+      tom = CONF_TONS.menos;
+      frase = `A ficha reconhece ${formatDurationLong(dTot)} a menos do que você lançou no app.`;
+    } else {
+      tom = CONF_TONS.mais;
+      frase = `A ficha reconhece ${formatDurationLong(-dTot)} a mais do que você lançou no app.`;
+    }
+  }
+
+  const catsHero = totais
+    ? CONF_CATS.filter((c) => totais.app[c.k] > 0 || totais.ficha[c.k] > 0)
+    : [];
 
   return (
     <div className="px-4 pt-5 max-w-md mx-auto animate-screen-in">
@@ -1855,7 +2144,21 @@ function ConferenciaScreen({
         </div>
       </section>
 
-      <section className="mb-5">{importButton}</section>
+      <input ref={fileRef} type="file" accept="application/pdf" onChange={handleFile} className="hidden" />
+
+      {/* O botão grande só antes de haver resultado; depois a troca mora na
+          linha de origem da ficha, e o herói assume o topo da tela. */}
+      {!resultado && (
+        <section className="mb-5">
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="w-full py-3 rounded-xl bg-amber-500/10 border border-amber-700/40 hover:bg-amber-500/15 hover:border-amber-600/50 transition flex items-center justify-center gap-2 text-amber-200 text-sm font-medium"
+          >
+            <Upload size={15} />
+            {ficha ? 'Trocar ficha' : 'Importar ficha PDF'}
+          </button>
+        </section>
+      )}
 
       {/* Erro de leitura do PDF */}
       {fichaErro && (
@@ -1922,38 +2225,117 @@ function ConferenciaScreen({
       {/* Resultado da conferência */}
       {resultado && (
         <>
-          {(ficha.tecnico || ficha.periodo) && (
-            <div className="text-[11px] text-stone-500 mb-3 px-1">
-              {ficha.tecnico && <span className="text-stone-400">{ficha.tecnico}</span>}
+          {/* De onde veio: técnico e período da ficha, e a troca rápida */}
+          <div className="flex items-center justify-between gap-3 mb-4 px-1">
+            <div className="min-w-0 text-[11px] text-stone-500 truncate">
+              {ficha.tecnico && <span className="text-stone-300">{ficha.tecnico}</span>}
               {ficha.tecnico && ficha.periodo && ' · '}
-              {ficha.periodo && `${formatDateBR(ficha.periodo.inicio)} a ${formatDateBR(ficha.periodo.fim)}`}
+              {ficha.periodo && confPeriodoLabel(ficha.periodo)}
             </div>
-          )}
-
-          {resumo && (
-            <div className="grid grid-cols-4 gap-2 mb-4">
-              {['fecha', 'divergencia', 'só na ficha', 'só no app'].map((k) => (
-                <div key={k} className="rounded-xl border border-stone-800 bg-stone-900/50 py-2.5 text-center">
-                  <div className={`text-xl tabular-nums ${resumo[k] ? CONF_STATUS[k].text : 'text-stone-600'}`}
-                       style={{ fontFamily: "'Fraunces', serif" }}>
-                    {resumo[k]}
-                  </div>
-                  <div className="text-[9px] uppercase tracking-[0.1em] text-stone-500 mt-0.5 leading-tight">
-                    {CONF_STATUS[k].label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="flex-shrink-0 inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-200/90 border border-amber-900/50 bg-amber-500/[0.07] hover:bg-amber-500/[0.12] rounded-full px-3 py-1.5 transition"
+            >
+              <Upload size={11} />
+              Trocar
+            </button>
+          </div>
 
           {resultado.length === 0 ? (
             <div className="text-center py-8 text-stone-500 text-sm">
               Nenhuma hora extra neste período — nem na ficha, nem no app.
             </div>
           ) : (
-            <div className="space-y-2">
-              {resultado.map((dia) => <ConfDayCard key={dia.data} dia={dia} tol={TOL} />)}
-            </div>
+            <>
+              {/* Herói: os dois somatórios frente a frente, e o veredito */}
+              <section className="mb-6">
+                <div className={`rounded-3xl border ${tom.borda} bg-gradient-to-br from-stone-900/80 to-stone-900/40 p-5 relative overflow-hidden`}>
+                  <div className={`absolute -top-12 -right-10 w-44 h-44 rounded-full ${tom.brilho} blur-3xl pointer-events-none`} />
+                  <div className="relative">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-medium">
+                        Total do período
+                      </div>
+                      <div className="text-[10.5px] text-stone-600">
+                        {resultado.length === 1 ? '1 dia com horas' : `${resultado.length} dias com horas`}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10.5px] uppercase tracking-[0.16em] text-stone-500">App</div>
+                        <div className="text-4xl text-stone-100 leading-none tabular-nums mt-1.5"
+                             style={{ fontFamily: "'Fraunces', serif", fontWeight: 400 }}>
+                          {formatDurationLong(totais.app.total)}
+                        </div>
+                      </div>
+                      <div className={`flex-shrink-0 text-3xl leading-none ${tom.cor}`} aria-hidden
+                           style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontWeight: 300 }}>
+                        {tom.glifo}
+                      </div>
+                      <div className="flex-1 min-w-0 text-right">
+                        <div className="text-[10.5px] uppercase tracking-[0.16em] text-stone-500">Ficha</div>
+                        <div className="text-4xl text-stone-100 leading-none tabular-nums mt-1.5"
+                             style={{ fontFamily: "'Fraunces', serif", fontWeight: 400 }}>
+                          {formatDurationLong(totais.ficha.total)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={`mt-4 rounded-xl border px-3.5 py-2.5 text-[12.5px] leading-relaxed ${tom.faixa}`}>
+                      {frase}
+                    </div>
+
+                    {catsHero.length >= 2 && (
+                      <div className="mt-3.5 pt-1 border-t border-stone-800/70">
+                        <ConfTabela app={totais.app} ficha={totais.ficha} diff={totais.diff} tol={TOL} comTotal={false} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              {/* Dia a dia, com filtro por veredito */}
+              <section>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <div className="text-[10.5px] uppercase tracking-[0.18em] text-stone-500 font-medium">
+                    Dia a dia
+                  </div>
+                  {filtroAtivo && (
+                    <div className="text-[10.5px] text-stone-600">
+                      {listaDias.length} de {resultado.length}
+                    </div>
+                  )}
+                </div>
+
+                {statusPresentes.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    <ConfChip ativo={filtroAtivo === null} onClick={() => setFiltro(null)} label="Todos" n={resultado.length} />
+                    {statusPresentes.map((k) => (
+                      <ConfChip
+                        key={k}
+                        status={k}
+                        ativo={filtroAtivo === k}
+                        onClick={() => setFiltro(filtroAtivo === k ? null : k)}
+                        label={CONF_STATUS[k].label}
+                        n={resumo[k]}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  {listaDias.map((dia) => (
+                    <ConfDia
+                      key={`${dia.data}:${dia.status}`}
+                      dia={dia}
+                      lanc={lancPorData[dia.data] || []}
+                      tol={TOL}
+                    />
+                  ))}
+                </div>
+              </section>
+            </>
           )}
 
           <div className="mt-5 text-center">
