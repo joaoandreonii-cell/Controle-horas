@@ -140,3 +140,123 @@ export function truncar(str, larguraMax, fonte, tamanho) {
   while (s.length > 1 && medir(`${s}…`, fonte, tamanho) > larguraMax) s = s.slice(0, -1);
   return `${s}…`;
 }
+
+/* ─── O documento ─────────────────────────────────────────────────────── */
+
+const num = (v) => (Math.round(v * 100) / 100).toString();
+const corPdf = ([r, g, b]) => `${num(r)} ${num(g)} ${num(b)}`;
+const NOME_FONTE = { normal: 'F1', bold: 'F2', simbolo: 'F3' };
+
+export function criarDoc({ largura, altura, margem }) {
+  const paginas = [[]];
+  let atual = 0;
+
+  const doc = {
+    largura, altura, margem, paginas,
+
+    novaPagina() { paginas.push([]); atual = paginas.length - 1; return doc; },
+    irParaPagina(i) { atual = i; return doc; },
+
+    texto(x, y, str, opts = {}) {
+      paginas[atual].push({
+        tipo: 'texto', x, y, str,
+        fonte: opts.fonte ?? 'normal',
+        tamanho: opts.tamanho ?? 10,
+        cor: opts.cor ?? [0, 0, 0],
+        alinhamento: opts.alinhamento ?? 'esq',
+        tracking: opts.tracking ?? 0,
+      });
+      return doc;
+    },
+
+    linha(x1, y1, x2, y2, opts = {}) {
+      paginas[atual].push({
+        tipo: 'linha', x1, y1, x2, y2,
+        cor: opts.cor ?? [0, 0, 0],
+        espessura: opts.espessura ?? 0.5,
+      });
+      return doc;
+    },
+
+    retangulo(x, y, w, h, opts = {}) {
+      paginas[atual].push({ tipo: 'retangulo', x, y, w, h, cor: opts.cor ?? [0, 0, 0] });
+      return doc;
+    },
+
+    bytes: (meta) => serializar(doc, meta),
+  };
+
+  return doc;
+}
+
+// Uma operação vira operadores de conteúdo. O y do layout conta do topo; o
+// PDF conta de baixo, e a inversão mora só aqui.
+function opParaConteudo(op, altura) {
+  if (op.tipo === 'texto') {
+    let x = op.x;
+    if (op.alinhamento !== 'esq') {
+      const w = medir(op.str, op.fonte, op.tamanho) + op.tracking * Math.max(0, op.str.length - 1);
+      x = op.alinhamento === 'dir' ? op.x - w : op.x - w / 2;
+    }
+    const tc = op.tracking ? `${num(op.tracking)} Tc ` : '';
+    return `BT ${tc}/${NOME_FONTE[op.fonte]} ${num(op.tamanho)} Tf ${corPdf(op.cor)} rg `
+         + `1 0 0 1 ${num(x)} ${num(altura - op.y)} Tm (${escaparPdf(op.str, op.fonte)}) Tj ET`;
+  }
+  if (op.tipo === 'linha') {
+    return `${corPdf(op.cor)} RG ${num(op.espessura)} w `
+         + `${num(op.x1)} ${num(altura - op.y1)} m ${num(op.x2)} ${num(altura - op.y2)} l S`;
+  }
+  return `${corPdf(op.cor)} rg ${num(op.x)} ${num(altura - op.y - op.h)} ${num(op.w)} ${num(op.h)} re f`;
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const dataPdf = (d) =>
+  `D:${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`
+  + `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
+
+function serializar(doc, { titulo = '', emitidoEm = new Date(0) } = {}) {
+  const { largura, altura, paginas } = doc;
+
+  // 1 Catalog · 2 Pages · 3-5 fontes · 6 Info · depois, por página, o Page e o
+  // Contents. A Symbol NÃO leva /Encoding: ela traz a própria.
+  const PRIMEIRA_PAGINA = 7;
+  const idPagina = (i) => PRIMEIRA_PAGINA + i * 2;
+  const idConteudo = (i) => PRIMEIRA_PAGINA + i * 2 + 1;
+
+  const corpos = [];
+  corpos[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  corpos[2] = `<< /Type /Pages /Count ${paginas.length} /Kids [${paginas.map((_, i) => `${idPagina(i)} 0 R`).join(' ')}] >>`;
+  corpos[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  corpos[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+  corpos[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Symbol >>';
+  corpos[6] = `<< /Title (${escaparPdf(titulo)}) /Producer (horas+) /Creator (horas+) /CreationDate (${dataPdf(emitidoEm)}) >>`;
+
+  paginas.forEach((ops, i) => {
+    corpos[idPagina(i)] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(largura)} ${num(altura)}] `
+      + `/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ${idConteudo(i)} 0 R >>`;
+    const conteudo = ops.map((op) => opParaConteudo(op, altura)).join('\n');
+    corpos[idConteudo(i)] = `<< /Length ${conteudo.length} >>\nstream\n${conteudo}\nendstream`;
+  });
+
+  // O arquivo é montado como texto latin-1, em que 1 caractere é 1 byte —
+  // por isso dá para contar offset com length. A conversão vem no fim.
+  const total = corpos.length;
+  let arquivo = '%PDF-1.4\n';
+  const offsets = [];
+  for (let n = 1; n < total; n++) {
+    offsets[n] = arquivo.length;
+    arquivo += `${n} 0 obj\n${corpos[n]}\nendobj\n`;
+  }
+
+  const inicioXref = arquivo.length;
+  arquivo += `xref\n0 ${total}\n0000000000 65535 f \n`;
+  for (let n = 1; n < total; n++) {
+    arquivo += `${String(offsets[n]).padStart(10, '0')} 00000 n \n`;
+  }
+  arquivo += `trailer\n<< /Size ${total} /Root 1 0 R /Info 6 0 R >>\nstartxref\n${inicioXref}\n%%EOF\n`;
+
+  const bytes = new Uint8Array(arquivo.length);
+  for (let i = 0; i < arquivo.length; i++) bytes[i] = arquivo.charCodeAt(i) & 0xff;
+  return bytes;
+}

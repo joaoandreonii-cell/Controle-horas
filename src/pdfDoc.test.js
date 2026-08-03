@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { paraWinAnsi, escaparPdf, medir, quebrar, truncar } from './pdfDoc';
+import { paraWinAnsi, escaparPdf, medir, quebrar, truncar, criarDoc } from './pdfDoc';
+import { extractPdfText } from './pdfText';
 
 describe('paraWinAnsi', () => {
   it('deixa o ASCII imprimível passar', () => {
@@ -100,5 +101,121 @@ describe('truncar', () => {
     const s = truncar('COOPERATIVA AGRARIA AGROINDUSTRIAL LTDA', 60, 'normal', 9);
     expect(s.endsWith('…')).toBe(true);
     expect(medir(s, 'normal', 9)).toBeLessThanOrEqual(60);
+  });
+});
+
+const doc5 = () => criarDoc({ largura: 419.53, altura: 595.28, margem: 36 });
+const latin1 = (bytes) => String.fromCharCode(...bytes);
+
+describe('criarDoc — páginas e operações', () => {
+  it('nasce com uma página e nenhuma operação', () => {
+    const doc = doc5();
+    expect(doc.paginas).toHaveLength(1);
+    expect(doc.paginas[0]).toHaveLength(0);
+  });
+
+  it('acumula a operação na página corrente', () => {
+    const doc = doc5();
+    doc.texto(10, 20, 'oi');
+    doc.novaPagina();
+    doc.texto(10, 20, 'tchau');
+    expect(doc.paginas).toHaveLength(2);
+    expect(doc.paginas[0][0].str).toBe('oi');
+    expect(doc.paginas[1][0].str).toBe('tchau');
+  });
+
+  it('irParaPagina volta a desenhar numa página anterior — é como o rodapé sabe o N/M', () => {
+    const doc = doc5();
+    doc.novaPagina();
+    doc.irParaPagina(0);
+    doc.texto(10, 580, '1/2');
+    expect(doc.paginas[0]).toHaveLength(1);
+    expect(doc.paginas[1]).toHaveLength(0);
+  });
+
+  it('guarda o texto com os atributos que o layout pediu', () => {
+    const doc = doc5();
+    doc.texto(10, 20, 'App', { fonte: 'bold', tamanho: 9, cor: [1, 0, 0], alinhamento: 'dir' });
+    expect(doc.paginas[0][0]).toMatchObject({
+      tipo: 'texto', x: 10, y: 20, str: 'App', fonte: 'bold', tamanho: 9, alinhamento: 'dir',
+    });
+  });
+});
+
+describe('criarDoc — bytes', () => {
+  const emitidoEm = new Date(2026, 7, 3, 14, 30, 0);
+
+  it('sai com cabeçalho e fecho de PDF', () => {
+    const doc = doc5();
+    doc.texto(36, 50, 'oi');
+    const s = latin1(doc.bytes({ titulo: 'teste', emitidoEm }));
+    expect(s.startsWith('%PDF-1.4')).toBe(true);
+    expect(s.trimEnd().endsWith('%%EOF')).toBe(true);
+  });
+
+  it('declara no /Count o número de páginas', () => {
+    const doc = doc5();
+    doc.novaPagina();
+    doc.novaPagina();
+    const s = latin1(doc.bytes({ titulo: 'teste', emitidoEm }));
+    expect(s).toContain('/Count 3');
+  });
+
+  it('cada offset do xref aponta para onde o objeto realmente começa', () => {
+    const doc = doc5();
+    doc.texto(36, 50, 'ção (com) \\ tudo');
+    doc.novaPagina();
+    doc.texto(36, 50, 'segunda');
+    const s = latin1(doc.bytes({ titulo: 'teste', emitidoEm }));
+
+    const inicio = s.indexOf('xref\n') + 'xref\n'.length;
+    const [, totalStr] = s.slice(inicio, s.indexOf('\n', inicio)).split(' ');
+    const total = Number(totalStr);
+    const corpo = s.indexOf('\n', inicio) + 1;
+
+    for (let n = 1; n < total; n++) {
+      const entrada = s.substr(corpo + n * 20, 20);
+      const offset = Number(entrada.slice(0, 10));
+      expect(s.startsWith(`${n} 0 obj`, offset)).toBe(true);
+    }
+    expect(s.substr(corpo, 20)).toBe('0000000000 65535 f \n');
+  });
+
+  it('o startxref aponta para a palavra xref', () => {
+    const doc = doc5();
+    doc.texto(36, 50, 'oi');
+    const s = latin1(doc.bytes({ titulo: 'teste', emitidoEm }));
+    const offset = Number(s.slice(s.lastIndexOf('startxref\n') + 10).split('\n')[0]);
+    expect(s.startsWith('xref', offset)).toBe(true);
+  });
+
+  it('mesma entrada, mesmos bytes', () => {
+    const um = doc5(); um.texto(36, 50, 'março');
+    const dois = doc5(); dois.texto(36, 50, 'março');
+    expect(latin1(um.bytes({ titulo: 't', emitidoEm }))).toBe(latin1(dois.bytes({ titulo: 't', emitidoEm })));
+  });
+
+  it('inverte o eixo: y é medido do topo', () => {
+    const doc = doc5();
+    doc.texto(36, 40, 'topo');
+    const s = latin1(doc.bytes({ titulo: 't', emitidoEm }));
+    expect(s).toContain(`1 0 0 1 36 ${(595.28 - 40).toFixed(2)} Tm`);
+  });
+});
+
+describe('ida e volta — o leitor do app lê o que o escritor escreveu', () => {
+  it('devolve as mesmas strings, acento incluído', async () => {
+    const doc = doc5();
+    doc.texto(36, 50, 'CONFERÊNCIA DA FICHA');
+    doc.texto(36, 70, 'março de 2026 · 33:15');
+    doc.novaPagina();
+    doc.texto(36, 50, 'ADAMI SA MADEIRAS (143)');
+
+    const bytes = doc.bytes({ titulo: 'Conferência', emitidoEm: new Date(2026, 7, 3) });
+    const lidas = await extractPdfText(bytes.buffer);
+
+    expect(lidas).toContain('CONFERÊNCIA DA FICHA');
+    expect(lidas).toContain('março de 2026 · 33:15');
+    expect(lidas).toContain('ADAMI SA MADEIRAS (143)');
   });
 });
