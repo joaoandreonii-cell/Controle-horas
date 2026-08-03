@@ -14,38 +14,15 @@ import { calculateOvertime, LUNCH_CONFIG, LUNCH_LABEL } from './overtime';
 import { extractPdfText } from './pdfText';
 import { parseFicha } from './ficha';
 import { conferir } from './conferencia';
+import {
+  pad, formatDate, parseDate, addDays, formatDateBR,
+  formatDuration, formatDurationLong,
+  DAY_FULL, DAY_SHORT, MONTH_FULL, MONTH_SHORT,
+} from './format';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
    ═════════════════════════════════════════════════════════════════════════ */
-
-const pad = (n) => String(n).padStart(2, '0');
-
-const formatDate = (d) =>
-  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-const parseDate = (s) => {
-  const [y, m, d] = s.split('-').map(Number);
-  return new Date(y, m - 1, d);
-};
-
-const addDays = (d, n) => {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
-};
-
-const formatDateBR = (s) => {
-  const d = parseDate(s);
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-};
-
-const DAY_FULL = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
-const DAY_SHORT = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-const MONTH_FULL = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-const MONTH_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun',
-  'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 /* Páscoa (Computus / Gauss) */
 function getEaster(year) {
@@ -88,22 +65,6 @@ function getHolidayDefaults(year) {
     { date: formatDate(addDays(easter, 60)), name: 'Corpus Christi' },
   ];
 }
-
-/* Time */
-const formatDuration = (mins) => {
-  if (!mins) return '0h';
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h === 0) return `${m}min`;
-  if (m === 0) return `${h}h`;
-  return `${h}h${pad(m)}`;
-};
-
-const formatDurationLong = (mins) => {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return `${pad(h)}:${pad(m)}`;
-};
 
 const DEFAULT_SETTINGS = {};
 
