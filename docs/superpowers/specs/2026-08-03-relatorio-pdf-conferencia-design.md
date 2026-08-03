@@ -80,10 +80,22 @@ Cada módulo com um propósito, puro, testado por tabela — o padrão de `entry
 
 ```
 src/format.js               os formatadores, MOVIDOS do App.jsx (nenhum call site muda)
+src/conferencia.js          ganha vereditoDoPeriodo — o tom e a frase, hoje dentro da tela
 src/pdfDoc.js               primitivas: página, texto, régua, retângulo, cor, medida, bytes
 src/relatorioConferencia.js resultado da conferência → páginas → bytes (puro)
 ConferenciaScreen           o botão e o compartilhamento
 ```
+
+### `vereditoDoPeriodo` — a frase num lugar só
+
+A frase do veredito e o tom são calculados hoje **dentro do corpo da `ConferenciaScreen`**
+(`src/App.jsx:2082-2100`). O PDF diz exatamente a mesma coisa, e copiar aquele bloco criaria
+duas verdades sobre o mesmo veredito — a tela e o documento discordando na primeira vez que
+alguém mexesse numa delas.
+
+Vai para o `conferencia.js`, que é onde o vocabulário nasce, devolvendo `{ tom, glifo, frase }`.
+A tela mapeia o `tom` para as classes do Tailwind (`CONF_TONS`), o relatório mapeia para tinta
+sobre papel. **A lógica é compartilhada; a apresentação é de cada meio.**
 
 ### `src/format.js` — por que mover
 
