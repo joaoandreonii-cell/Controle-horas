@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, Settings, X, Plus, Copy,
   Check, Trash2, Calendar, Sparkles, AlertTriangle, Wand2,
   Home, CalendarDays, Pencil, Download, Upload, Moon, FileSpreadsheet,
-  Clock, FileCheck, FileText, ChevronDown,
+  Clock, FileCheck, FileText, ChevronDown, Share2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Analytics } from '@vercel/analytics/react';
@@ -13,39 +13,17 @@ import { swipeIntent } from './swipe';
 import { calculateOvertime, LUNCH_CONFIG, LUNCH_LABEL } from './overtime';
 import { extractPdfText } from './pdfText';
 import { parseFicha } from './ficha';
-import { conferir } from './conferencia';
+import { conferir, vereditoDoPeriodo } from './conferencia';
+import {
+  pad, formatDate, parseDate, addDays, formatDateBR,
+  formatDuration, formatDurationLong, fmtDiff,
+  DAY_FULL, DAY_SHORT, MONTH_FULL, MONTH_SHORT,
+} from './format';
+import { gerarPdfConferencia, nomeArquivoRelatorio } from './relatorioConferencia';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
    ═════════════════════════════════════════════════════════════════════════ */
-
-const pad = (n) => String(n).padStart(2, '0');
-
-const formatDate = (d) =>
-  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-const parseDate = (s) => {
-  const [y, m, d] = s.split('-').map(Number);
-  return new Date(y, m - 1, d);
-};
-
-const addDays = (d, n) => {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
-};
-
-const formatDateBR = (s) => {
-  const d = parseDate(s);
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-};
-
-const DAY_FULL = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
-const DAY_SHORT = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-const MONTH_FULL = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-const MONTH_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun',
-  'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 /* Páscoa (Computus / Gauss) */
 function getEaster(year) {
@@ -88,22 +66,6 @@ function getHolidayDefaults(year) {
     { date: formatDate(addDays(easter, 60)), name: 'Corpus Christi' },
   ];
 }
-
-/* Time */
-const formatDuration = (mins) => {
-  if (!mins) return '0h';
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h === 0) return `${m}min`;
-  if (m === 0) return `${h}h`;
-  return `${h}h${pad(m)}`;
-};
-
-const formatDurationLong = (mins) => {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return `${pad(h)}:${pad(m)}`;
-};
 
 const DEFAULT_SETTINGS = {};
 
@@ -1685,16 +1647,10 @@ const CONF_CATS = [
 // sinal só. A cor vem dos DIAS, não da diferença total — dois desvios opostos
 // podem se anular no total sem que nada esteja certo.
 const CONF_TONS = {
-  confere: { glifo: '=', cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-stone-800',    faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
-  quase:   { glifo: '=', cor: 'text-amber-300',   brilho: 'bg-amber-500/[0.05]',   borda: 'border-amber-900/40', faixa: 'bg-amber-950/30 border-amber-900/40 text-amber-200' },
-  menos:   { glifo: '≠', cor: 'text-rose-300',    brilho: 'bg-rose-500/[0.06]',    borda: 'border-rose-900/50',   faixa: 'bg-rose-950/30 border-rose-900/50 text-rose-200' },
-  mais:    { glifo: '≠', cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-emerald-900/40', faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
-};
-
-// Minutos com sinal, em h:mm. O zero vira travessão para não poluir a lista.
-const fmtDiff = (min) => {
-  if (min === 0) return '—';
-  return (min > 0 ? '+' : '−') + formatDurationLong(Math.abs(min));
+  confere: { cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-stone-800',    faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
+  quase:   { cor: 'text-amber-300',   brilho: 'bg-amber-500/[0.05]',   borda: 'border-amber-900/40', faixa: 'bg-amber-950/30 border-amber-900/40 text-amber-200' },
+  menos:   { cor: 'text-rose-300',    brilho: 'bg-rose-500/[0.06]',    borda: 'border-rose-900/50',   faixa: 'bg-rose-950/30 border-rose-900/50 text-rose-200' },
+  mais:    { cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-emerald-900/40', faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
 };
 
 // A cor do sinal, não da magnitude: dentro da tolerância não tem lado, fica
@@ -2078,26 +2034,58 @@ function ConferenciaScreen({
   const statusPresentes = resumo ? CONF_ORDEM.filter((k) => resumo[k] > 0) : [];
 
   // O veredito do herói. A cor vem dos dias (ver CONF_TONS); a frase diz em
-  // palavras o que o glifo resume.
-  let tom = null;
-  let frase = null;
-  if (totais && resumo) {
-    const problemas = resultado.length - resumo.fecha;
-    const dTot = totais.diff.total;
-    if (problemas === 0) {
-      tom = CONF_TONS.confere;
-      frase = 'Tudo confere — o total e cada dia fecham com a ficha.';
-    } else if (Math.abs(dTot) <= TOL) {
-      tom = CONF_TONS.quase;
-      frase = `O total fecha, mas ${problemas === 1 ? '1 dia não bate' : `${problemas} dias não batem`} — veja na lista.`;
-    } else if (dTot > 0) {
-      tom = CONF_TONS.menos;
-      frase = `A ficha reconhece ${formatDurationLong(dTot)} a menos do que você lançou no app.`;
-    } else {
-      tom = CONF_TONS.mais;
-      frase = `A ficha reconhece ${formatDurationLong(-dTot)} a mais do que você lançou no app.`;
+  // palavras o que o glifo resume. O cálculo mora em conferencia.js porque o
+  // relatório em PDF diz exatamente a mesma coisa.
+  const veredito = totais && resumo
+    ? vereditoDoPeriodo({ resultado, totais, tolerancia: TOL })
+    : null;
+  const tom = veredito ? CONF_TONS[veredito.tom] : null;
+  const frase = veredito ? veredito.frase : null;
+
+  // Gerar e mandar. O documento sai do `resultado` INTEIRO, nunca de
+  // `listaDias`: um relatório que reflete em silêncio o filtro da tela mente
+  // por omissão, e quem receber no WhatsApp não tem como saber que havia um.
+  const [gerando, setGerando] = useState(false);
+
+  const gerarRelatorio = async () => {
+    if (!resultado || !resultado.length) return;
+    setGerando(true);
+    try {
+      const bytes = gerarPdfConferencia({
+        resultado, totais, ficha, refMonth, tolerancia: TOL, emitidoEm: new Date(),
+      });
+      const nome = nomeArquivoRelatorio(refMonth);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const file = new File([blob], nome, { type: 'application/pdf' });
+
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file] });
+          return;
+        } catch (e) {
+          // Cancelar não é erro: o usuário fechou a bandeja de propósito.
+          if (e?.name === 'AbortError') return;
+          // Qualquer outra falha cai no download, abaixo.
+        }
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nome;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      // Sem isto a promessa rejeita sem dono: no celular, em campo, não há
+      // console para o técnico olhar — só "Gerando…" que pisca e some.
+      console.error('Erro ao gerar relatório:', e);
+      alert('Não foi possível gerar o relatório. Tente novamente.');
+    } finally {
+      setGerando(false);
     }
-  }
+  };
 
   const catsHero = totais
     ? CONF_CATS.filter((c) => totais.app[c.k] > 0 || totais.ficha[c.k] > 0)
@@ -2271,7 +2259,7 @@ function ConferenciaScreen({
                       </div>
                       <div className={`flex-shrink-0 text-3xl leading-none ${tom.cor}`} aria-hidden
                            style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontWeight: 300 }}>
-                        {tom.glifo}
+                        {veredito.glifo}
                       </div>
                       <div className="flex-1 min-w-0 text-right">
                         <div className="text-[10.5px] uppercase tracking-[0.16em] text-stone-500">Ficha</div>
@@ -2294,6 +2282,18 @@ function ConferenciaScreen({
                   </div>
                 </div>
               </section>
+
+              {/* Depois de ler o veredito, o gesto natural é mandar. Nesta
+                  altura o CTA de importar já colapsou no chip "Trocar", então
+                  este é o botão principal da tela. */}
+              <button
+                onClick={gerarRelatorio}
+                disabled={gerando}
+                className="w-full mb-6 py-3 rounded-xl bg-amber-500/10 border border-amber-700/40 hover:bg-amber-500/15 hover:border-amber-600/50 disabled:opacity-50 transition flex items-center justify-center gap-2 text-amber-200 text-sm font-medium"
+              >
+                <Share2 size={15} />
+                {gerando ? 'Gerando…' : 'Relatório em PDF'}
+              </button>
 
               {/* Dia a dia, com filtro por veredito */}
               <section>
