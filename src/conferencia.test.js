@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { conferir } from './conferencia';
+import { conferir, vereditoDoPeriodo } from './conferencia';
 
 /* conferir é puro: recebe a ficha (o que a empresa reconhece) e o byDate do app
    (o que você registrou, já repartido por data civil), e devolve o veredito de
@@ -117,5 +117,49 @@ describe('conferir — ordenação', () => {
       appByDate: { '2025-11-12': A(10) },
     });
     expect(r.map((d) => d.data)).toEqual(['2025-11-05', '2025-11-12', '2025-11-20']);
+  });
+});
+
+const totaisCom = (appTotal, fichaTotal) => ({
+  app: { d50: 0, d100: 0, n50: 0, n100: 0, total: appTotal },
+  ficha: { d50: 0, d100: 0, n50: 0, n100: 0, total: fichaTotal },
+  diff: { d50: 0, d100: 0, n50: 0, n100: 0, total: appTotal - fichaTotal },
+});
+const dias = (...status) => status.map((s, i) => ({ data: `2025-11-0${i + 1}`, status: s }));
+
+describe('vereditoDoPeriodo', () => {
+  it('tudo fechando é confere', () => {
+    const v = vereditoDoPeriodo({ resultado: dias('fecha', 'fecha'), totais: totaisCom(120, 120), tolerancia: 2 });
+    expect(v.tom).toBe('confere');
+    expect(v.glifo).toBe('=');
+    expect(v.frase).toBe('Tudo confere — o total e cada dia fecham com a ficha.');
+  });
+
+  it('total fechando com dia torto é quase — a cor vem dos dias, não do total', () => {
+    const v = vereditoDoPeriodo({ resultado: dias('fecha', 'divergencia'), totais: totaisCom(120, 120), tolerancia: 2 });
+    expect(v.tom).toBe('quase');
+    expect(v.glifo).toBe('=');
+    expect(v.frase).toBe('O total fecha, mas 1 dia não bate — veja na lista.');
+  });
+
+  it('plural de dias tortos', () => {
+    const v = vereditoDoPeriodo({
+      resultado: dias('divergencia', 'só na ficha', 'fecha'), totais: totaisCom(121, 120), tolerancia: 2,
+    });
+    expect(v.frase).toBe('O total fecha, mas 2 dias não batem — veja na lista.');
+  });
+
+  it('a ficha reconhecendo menos é o caso que pede atenção', () => {
+    const v = vereditoDoPeriodo({ resultado: dias('divergencia'), totais: totaisCom(180, 120), tolerancia: 2 });
+    expect(v.tom).toBe('menos');
+    expect(v.glifo).toBe('≠');
+    expect(v.frase).toBe('A ficha reconhece 01:00 a menos do que você lançou no app.');
+  });
+
+  it('a ficha reconhecendo mais é notícia boa', () => {
+    const v = vereditoDoPeriodo({ resultado: dias('divergencia'), totais: totaisCom(120, 180), tolerancia: 2 });
+    expect(v.tom).toBe('mais');
+    expect(v.glifo).toBe('≠');
+    expect(v.frase).toBe('A ficha reconhece 01:00 a mais do que você lançou no app.');
   });
 });

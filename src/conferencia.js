@@ -9,6 +9,8 @@
    se reimplementa cálculo nenhum aqui — o byDate é a fonte.
    ═════════════════════════════════════════════════════════════════════════ */
 
+import { formatDurationLong } from './format';
+
 const CATS = ['d50', 'd100', 'n50', 'n100'];
 const zero = () => ({ d50: 0, d100: 0, n50: 0, n100: 0, total: 0 });
 
@@ -92,4 +94,27 @@ export function conferir({ ficha, appByDate, tolerancia = 2 }) {
 
   dias.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
   return dias;
+}
+
+// O veredito do período em palavras. Mora aqui, e não na tela, porque o
+// relatório em PDF diz exatamente a mesma coisa — e duas cópias discordariam
+// na primeira vez que alguém mexesse numa delas.
+//
+// O tom vem dos DIAS, não da diferença total: dois desvios opostos podem se
+// anular no total sem que nada esteja certo. Daí o 'quase'.
+export function vereditoDoPeriodo({ resultado, totais, tolerancia = 2 }) {
+  const problemas = resultado.length - resultado.filter((d) => d.status === 'fecha').length;
+  const dTot = totais.diff.total;
+
+  if (problemas === 0) {
+    return { tom: 'confere', glifo: '=', frase: 'Tudo confere — o total e cada dia fecham com a ficha.' };
+  }
+  if (Math.abs(dTot) <= tolerancia) {
+    const quantos = problemas === 1 ? '1 dia não bate' : `${problemas} dias não batem`;
+    return { tom: 'quase', glifo: '=', frase: `O total fecha, mas ${quantos} — veja na lista.` };
+  }
+  if (dTot > 0) {
+    return { tom: 'menos', glifo: '≠', frase: `A ficha reconhece ${formatDurationLong(dTot)} a menos do que você lançou no app.` };
+  }
+  return { tom: 'mais', glifo: '≠', frase: `A ficha reconhece ${formatDurationLong(-dTot)} a mais do que você lançou no app.` };
 }

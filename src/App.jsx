@@ -13,7 +13,7 @@ import { swipeIntent } from './swipe';
 import { calculateOvertime, LUNCH_CONFIG, LUNCH_LABEL } from './overtime';
 import { extractPdfText } from './pdfText';
 import { parseFicha } from './ficha';
-import { conferir } from './conferencia';
+import { conferir, vereditoDoPeriodo } from './conferencia';
 import {
   pad, formatDate, parseDate, addDays, formatDateBR,
   formatDuration, formatDurationLong,
@@ -1646,10 +1646,10 @@ const CONF_CATS = [
 // sinal só. A cor vem dos DIAS, não da diferença total — dois desvios opostos
 // podem se anular no total sem que nada esteja certo.
 const CONF_TONS = {
-  confere: { glifo: '=', cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-stone-800',    faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
-  quase:   { glifo: '=', cor: 'text-amber-300',   brilho: 'bg-amber-500/[0.05]',   borda: 'border-amber-900/40', faixa: 'bg-amber-950/30 border-amber-900/40 text-amber-200' },
-  menos:   { glifo: '≠', cor: 'text-rose-300',    brilho: 'bg-rose-500/[0.06]',    borda: 'border-rose-900/50',   faixa: 'bg-rose-950/30 border-rose-900/50 text-rose-200' },
-  mais:    { glifo: '≠', cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-emerald-900/40', faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
+  confere: { cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-stone-800',    faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
+  quase:   { cor: 'text-amber-300',   brilho: 'bg-amber-500/[0.05]',   borda: 'border-amber-900/40', faixa: 'bg-amber-950/30 border-amber-900/40 text-amber-200' },
+  menos:   { cor: 'text-rose-300',    brilho: 'bg-rose-500/[0.06]',    borda: 'border-rose-900/50',   faixa: 'bg-rose-950/30 border-rose-900/50 text-rose-200' },
+  mais:    { cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-emerald-900/40', faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
 };
 
 // Minutos com sinal, em h:mm. O zero vira travessão para não poluir a lista.
@@ -2039,26 +2039,13 @@ function ConferenciaScreen({
   const statusPresentes = resumo ? CONF_ORDEM.filter((k) => resumo[k] > 0) : [];
 
   // O veredito do herói. A cor vem dos dias (ver CONF_TONS); a frase diz em
-  // palavras o que o glifo resume.
-  let tom = null;
-  let frase = null;
-  if (totais && resumo) {
-    const problemas = resultado.length - resumo.fecha;
-    const dTot = totais.diff.total;
-    if (problemas === 0) {
-      tom = CONF_TONS.confere;
-      frase = 'Tudo confere — o total e cada dia fecham com a ficha.';
-    } else if (Math.abs(dTot) <= TOL) {
-      tom = CONF_TONS.quase;
-      frase = `O total fecha, mas ${problemas === 1 ? '1 dia não bate' : `${problemas} dias não batem`} — veja na lista.`;
-    } else if (dTot > 0) {
-      tom = CONF_TONS.menos;
-      frase = `A ficha reconhece ${formatDurationLong(dTot)} a menos do que você lançou no app.`;
-    } else {
-      tom = CONF_TONS.mais;
-      frase = `A ficha reconhece ${formatDurationLong(-dTot)} a mais do que você lançou no app.`;
-    }
-  }
+  // palavras o que o glifo resume. O cálculo mora em conferencia.js porque o
+  // relatório em PDF diz exatamente a mesma coisa.
+  const veredito = totais && resumo
+    ? vereditoDoPeriodo({ resultado, totais, tolerancia: TOL })
+    : null;
+  const tom = veredito ? CONF_TONS[veredito.tom] : null;
+  const frase = veredito ? veredito.frase : null;
 
   const catsHero = totais
     ? CONF_CATS.filter((c) => totais.app[c.k] > 0 || totais.ficha[c.k] > 0)
@@ -2232,7 +2219,7 @@ function ConferenciaScreen({
                       </div>
                       <div className={`flex-shrink-0 text-3xl leading-none ${tom.cor}`} aria-hidden
                            style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontWeight: 300 }}>
-                        {tom.glifo}
+                        {veredito.glifo}
                       </div>
                       <div className="flex-1 min-w-0 text-right">
                         <div className="text-[10.5px] uppercase tracking-[0.16em] text-stone-500">Ficha</div>
