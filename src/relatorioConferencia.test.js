@@ -68,8 +68,9 @@ describe('herói', () => {
     const t = textos(montar(dias));
     expect(t).toContain('App');
     expect(t).toContain('Ficha');
-    // 2 no herói (App/Ficha) + 2 na linha '50% diurno' da tabela logo abaixo
-    expect(t.filter((s) => s === '02:00')).toHaveLength(4);
+    // 2 no herói (App/Ficha) + 2 na linha '50% diurno' da tabela
+    // logo abaixo + 1 no total da linha do dia, no DIA A DIA.
+    expect(t.filter((s) => s === '02:00')).toHaveLength(5);
     expect(t).toContain('Tudo confere — o total e cada dia fecham com a ficha.');
   });
 
@@ -144,7 +145,9 @@ describe('dia a dia', () => {
     const ops = montar([dia('2025-11-10', 'fecha', { d50: 90, total: 90 }, { d50: 89, total: 89 })])
       .paginas.flat();
     const rotulo = ops.find((o) => o.str === 'Fecha');
-    const difer = ops.find((o) => o.str === '+00:01');
+    // '+00:01' também sai na coluna Dif do herói; aqui
+    // interessa o da linha do dia, o último da página.
+    const difer = ops.findLast((o) => o.str === '+00:01');
     expect(rotulo.y).toBe(difer.y);
     expect(rotulo.x).toBeLessThan(difer.x - 60);
   });
