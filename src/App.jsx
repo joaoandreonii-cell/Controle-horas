@@ -16,7 +16,7 @@ import { parseFicha } from './ficha';
 import { conferir, vereditoDoPeriodo } from './conferencia';
 import {
   pad, formatDate, parseDate, addDays, formatDateBR,
-  formatDuration, formatDurationLong,
+  formatDuration, formatDurationLong, fmtDiff,
   DAY_FULL, DAY_SHORT, MONTH_FULL, MONTH_SHORT,
 } from './format';
 import { gerarPdfConferencia, nomeArquivoRelatorio } from './relatorioConferencia';
@@ -1653,12 +1653,6 @@ const CONF_TONS = {
   mais:    { cor: 'text-emerald-300', brilho: 'bg-emerald-500/[0.06]', borda: 'border-emerald-900/40', faixa: 'bg-emerald-950/30 border-emerald-900/40 text-emerald-200' },
 };
 
-// Minutos com sinal, em h:mm. O zero vira travessão para não poluir a lista.
-const fmtDiff = (min) => {
-  if (min === 0) return '—';
-  return (min > 0 ? '+' : '−') + formatDurationLong(Math.abs(min));
-};
-
 // A cor do sinal, não da magnitude: dentro da tolerância não tem lado, fica
 // neutro. Fora dela, a ficha reconhecendo mais é notícia boa — verde; o app
 // tendo mais do que a ficha reconheceu pede atenção — vermelho. diff segue a
@@ -2083,6 +2077,11 @@ function ConferenciaScreen({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    } catch (e) {
+      // Sem isto a promessa rejeita sem dono: no celular, em campo, não há
+      // console para o técnico olhar — só "Gerando…" que pisca e some.
+      console.error('Erro ao gerar relatório:', e);
+      alert('Não foi possível gerar o relatório. Tente novamente.');
     } finally {
       setGerando(false);
     }

@@ -8,9 +8,9 @@
    celular: uma A4 encolhe para 60% numa tela de 360px e obriga zoom.
    ═════════════════════════════════════════════════════════════════════════ */
 
-import { criarDoc, medir, quebrar, truncar } from './pdfDoc';
+import { criarDoc, quebrar, truncar } from './pdfDoc';
 import { vereditoDoPeriodo } from './conferencia';
-import { formatDurationLong, formatDateBR, parseDate, MONTH_FULL, DAY_SHORT } from './format';
+import { formatDurationLong, formatDateBR, parseDate, MONTH_FULL, DAY_SHORT, fmtDiff } from './format';
 
 export const PAGINA = { largura: 419.53, altura: 595.28, margem: 36 };
 const TOPO = 40;
@@ -49,9 +49,6 @@ export function nomeArquivoRelatorio(refMonth) {
   return `conferencia-${semAcento(MONTH_FULL[refMonth.month - 1])}-${refMonth.year}.pdf`;
 }
 
-// O zero vira travessão para não poluir a coluna — igual ao fmtDiff da tela.
-const fmtDif = (min) => (min === 0 ? '—' : (min > 0 ? '+' : '-') + formatDurationLong(Math.abs(min)));
-
 // As três colunas de número, todas alinhadas à direita na mesma geometria —
 // no herói e em cada dia, para o olho descer reto pela página.
 function colunas(doc) {
@@ -72,7 +69,7 @@ function tabelaCategorias(doc, y, { app, ficha, diff }, { comTotal }) {
     doc.texto(c.rotulo, y, cat.rotulo, { tamanho: 8.5, cor: FRACO });
     doc.texto(c.app, y, formatDurationLong(app[cat.k]), { tamanho: 8.5, cor: TINTA, alinhamento: 'dir' });
     doc.texto(c.ficha, y, formatDurationLong(ficha[cat.k]), { tamanho: 8.5, cor: TINTA, alinhamento: 'dir' });
-    doc.texto(c.dif, y, fmtDif(diff[cat.k]), { tamanho: 8.5, cor: FRACO, alinhamento: 'dir' });
+    doc.texto(c.dif, y, fmtDiff(diff[cat.k]), { tamanho: 8.5, cor: FRACO, alinhamento: 'dir' });
     y += 12;
   }
 
@@ -81,7 +78,7 @@ function tabelaCategorias(doc, y, { app, ficha, diff }, { comTotal }) {
     doc.texto(c.rotulo, y + 2, 'Total', { fonte: 'bold', tamanho: 8.5, cor: TINTA });
     doc.texto(c.app, y + 2, formatDurationLong(app.total), { fonte: 'bold', tamanho: 8.5, cor: TINTA, alinhamento: 'dir' });
     doc.texto(c.ficha, y + 2, formatDurationLong(ficha.total), { fonte: 'bold', tamanho: 8.5, cor: TINTA, alinhamento: 'dir' });
-    doc.texto(c.dif, y + 2, fmtDif(diff.total), { fonte: 'bold', tamanho: 8.5, cor: FRACO, alinhamento: 'dir' });
+    doc.texto(c.dif, y + 2, fmtDiff(diff.total), { fonte: 'bold', tamanho: 8.5, cor: FRACO, alinhamento: 'dir' });
     y += 16;
   }
   return y;
@@ -125,13 +122,13 @@ function heroi(doc, y, { resultado, totais, tolerancia }) {
   doc.texto(dir, y, formatDurationLong(totais.ficha.total), { fonte: 'bold', tamanho: 24, cor, alinhamento: 'dir' });
   y += 18;
 
-  // A faixa do veredito: fundo a 5% da cor sobre branco, filete de 2pt à
+  // A faixa do veredito: fundo a 9% da cor sobre branco, filete de 2pt à
   // esquerda. Sem canto arredondado — em PDF isso é bezier, e não vale.
   const larguraTexto = doc.largura - doc.margem * 2 - 18;
   const linhas = quebrar(v.frase, larguraTexto, 'normal', 9);
   const alturaFaixa = linhas.length * 12 + 12;
-  const tinta5 = cor.map((c) => 1 - (1 - c) * 0.09);
-  doc.retangulo(doc.margem, y, doc.largura - doc.margem * 2, alturaFaixa, { cor: tinta5 });
+  const tinta9 = cor.map((c) => 1 - (1 - c) * 0.09);
+  doc.retangulo(doc.margem, y, doc.largura - doc.margem * 2, alturaFaixa, { cor: tinta9 });
   doc.retangulo(doc.margem, y, 2, alturaFaixa, { cor });
   let ly = y + 15;
   for (const l of linhas) {
@@ -188,7 +185,7 @@ function desenharDia(doc, diaConf, y) {
   // O dia que fecha com um minuto de diferença ainda deve isso ao leitor —
   // pequeno e cinza, sem virar alarme.
   if (diaConf.status === 'fecha' && diaConf.diff.total !== 0) {
-    doc.texto(dir - 46, y, fmtDif(diaConf.diff.total), { tamanho: 7.5, cor: FRACO, alinhamento: 'dir' });
+    doc.texto(dir - 46, y, fmtDiff(diaConf.diff.total), { tamanho: 7.5, cor: FRACO, alinhamento: 'dir' });
   }
   y += LINHA_DIA;
 

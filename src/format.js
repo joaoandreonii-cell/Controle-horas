@@ -48,3 +48,11 @@ export const formatDurationLong = (mins) => {
   const m = mins % 60;
   return `${pad(h)}:${pad(m)}`;
 };
+
+// Minutos com sinal, em h:mm. O zero vira travessão para não poluir a lista.
+// Compartilhado entre a tela e o relatório em PDF: duas cópias discordariam
+// sobre o mesmo número na primeira vez que alguém mexesse numa delas.
+export const fmtDiff = (min) => {
+  if (min === 0) return '—';
+  return (min > 0 ? '+' : '−') + formatDurationLong(Math.abs(min));
+};

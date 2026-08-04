@@ -215,6 +215,15 @@ describe('criarDoc — bytes', () => {
     expect(m[1]).toContain('2014'); // o travessão U+2014, em UTF-16BE
     expect(m[1]).not.toContain('0097'); // o byte WinAnsi do travessão, errado aqui
   });
+
+  it('fonte desconhecida derruba bytes() com mensagem útil, em vez de gerar /undefined', () => {
+    // NOME_FONTE só conhece normal/bold/simbolo. Sem a guarda, esse texto
+    // viraria '/undefined 9 Tf' no conteúdo — o PDF sai sem erro nenhum e só
+    // quebra na hora de abrir, no aparelho de quem recebeu.
+    const doc = doc5();
+    doc.texto(36, 50, 'oi', { fonte: 'italico' });
+    expect(() => doc.bytes({ titulo: 't', emitidoEm })).toThrow(/italico/);
+  });
 });
 
 describe('ida e volta — o leitor do app lê o que o escritor escreveu', () => {

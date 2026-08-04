@@ -193,13 +193,19 @@ export function criarDoc({ largura, altura, margem }) {
 // PDF conta de baixo, e a inversão mora só aqui.
 function opParaConteudo(op, altura) {
   if (op.tipo === 'texto') {
+    // A guarda fica aqui, na serialização, não em doc.texto(): é o único
+    // funil por onde toda operação de texto passa para virar bytes, e é
+    // exatamente aqui — não antes — que uma fonte inexistente viraria
+    // '/undefined' no conteúdo. Falhar em bytes() é o que o achado pede.
+    const nomeFonte = NOME_FONTE[op.fonte];
+    if (!nomeFonte) throw new Error(`pdfDoc: fonte desconhecida '${op.fonte}' — não existe em NOME_FONTE`);
     let x = op.x;
     if (op.alinhamento !== 'esq') {
       const w = medir(op.str, op.fonte, op.tamanho) + op.tracking * Math.max(0, op.str.length - 1);
       x = op.alinhamento === 'dir' ? op.x - w : op.x - w / 2;
     }
     const tc = op.tracking ? `${num(op.tracking)} Tc ` : '';
-    return `BT ${tc}/${NOME_FONTE[op.fonte]} ${num(op.tamanho)} Tf ${corPdf(op.cor)} rg `
+    return `BT ${tc}/${nomeFonte} ${num(op.tamanho)} Tf ${corPdf(op.cor)} rg `
          + `1 0 0 1 ${num(x)} ${num(altura - op.y)} Tm (${escaparPdf(op.str, op.fonte)}) Tj ET`;
   }
   if (op.tipo === 'linha') {

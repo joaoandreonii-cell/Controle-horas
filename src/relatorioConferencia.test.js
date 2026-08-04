@@ -214,6 +214,63 @@ describe('paginação', () => {
     expect(t).toContain('12/11');
     expect(t).toContain('13/11');
   });
+
+  // muitosDias(n) só gera 'fecha' — o bloco mais baixo que existe, sem
+  // mini-tabela nem linha de ausência. As duas asserções abaixo (dia não
+  // partido; nada abaixo da margem) precisam também ver blocos altos: uma
+  // divergência com as quatro categorias, uma ausência com cliente. Senão as
+  // três parcelas condicionais de alturaDoDia nunca são exercitadas aqui.
+  const diaDivergenciaAlta = (data) => dia(data, 'divergencia',
+    { d50: 60, d100: 30, n50: 20, n100: 10, total: 120 },
+    { d50: 50, d100: 20, n50: 10, n100: 5, total: 85 });
+
+  const diaSoNaFichaComCliente = (data) =>
+    dia(data, 'só na ficha', {}, { d50: 40, total: 40 }, ['ADAMI SA MADEIRAS']);
+
+  const diaSoNoApp = (data) => dia(data, 'só no app', { d50: 45, total: 45 }, {});
+
+  const diaFechaBaixo = (data) => dia(data, 'fecha', { d50: 60, total: 60 }, { d50: 60, total: 60 });
+
+  const muitosDiasMistos = (nCiclos) => {
+    // A ordem importa: com um dia de cada por ciclo (D,S,A,F) o desalinhamento
+    // de altura nunca cai perto o bastante da quebra de página para acusar
+    // nada — sobra respiro. Repetir a 'só na ficha' no ciclo (D,S,S,A,F) foi o
+    // padrão, dentre os testados, que reproduz de forma estável (robusto a
+    // várias contagens de repetição) o efeito descrito no achado: o dia mais
+    // alto emendado logo após um bloco médio estoura a margem quando
+    // alturaDoDia subestima.
+    const fabricas = [diaDivergenciaAlta, diaSoNaFichaComCliente, diaSoNaFichaComCliente, diaSoNoApp, diaFechaBaixo];
+    const dias = [];
+    for (let i = 0; i < nCiclos; i++) {
+      for (const fabrica of fabricas) {
+        const diaDoMes = (dias.length % 25) + 1;
+        dias.push(fabrica(`2025-11-${String(diaDoMes).padStart(2, '0')}`));
+      }
+    }
+    return dias;
+  };
+
+  it('com blocos altos (4 categorias, ausência com cliente), nenhum dia é partido entre páginas', () => {
+    const doc = montar(muitosDiasMistos(8));
+    expect(doc.paginas.length).toBeGreaterThan(1);
+    for (const pagina of doc.paginas) {
+      const ops = pagina.filter((o) => o.tipo === 'texto');
+      const primeiraData = ops.findIndex((o) => /^\d{2}\/\d{2}$/.test(o.str));
+      const clientes = ops.findIndex((o) => o.str === 'ADAMI SA MADEIRAS');
+      if (clientes >= 0) expect(primeiraData).toBeGreaterThanOrEqual(0);
+      if (clientes >= 0) expect(primeiraData).toBeLessThan(clientes);
+    }
+  });
+
+  it('com blocos altos (4 categorias, ausência com cliente), nada é desenhado abaixo da margem inferior', () => {
+    const doc = montar(muitosDiasMistos(8));
+    for (const pagina of doc.paginas) {
+      for (const op of pagina) {
+        const y = op.tipo === 'linha' ? op.y2 : (op.tipo === 'retangulo' ? op.y + op.h : op.y);
+        expect(y).toBeLessThanOrEqual(595.28 - 20);
+      }
+    }
+  });
 });
 
 import { gerarPdfConferencia } from './relatorioConferencia';
@@ -264,5 +321,25 @@ describe('gerarPdfConferencia', () => {
     expect(lidas).toContain('ADAMI SA MADEIRAS');
     expect(lidas).toContain('Divergência');
     expect(lidas.some((s) => s.includes('A ficha reconhece'))).toBe(true);
+  });
+
+  // fmtDiff (format.js) emite o menos tipográfico (U+2212), igual à tela. O
+  // EXTRA['−'] = 0x2d de pdfDoc.js existe para rebaixar esse caractere a
+  // hífen ASCII na codificação WinAnsi — sem ele todo diferencial negativo
+  // sairia como '?'. Este teste trava que a unificação da função não mudou
+  // um byte do PDF: o hífen que sai é sempre o ASCII.
+  it('diferencial negativo sai com hífen ASCII no PDF, nunca com ?', async () => {
+    const dias = [dia('2025-11-10', 'fecha', { d50: 91, total: 91 }, { d50: 120, total: 120 })];
+    const bytes = gerarPdfConferencia({
+      resultado: dias,
+      totais: somaTotais(dias),
+      ficha: fichaFalsa,
+      refMonth: { year: 2025, month: 11 },
+      tolerancia: 2,
+      emitidoEm: new Date(2026, 7, 3, 14, 30),
+    });
+    const lidas = await extractPdfText(bytes.buffer);
+    expect(lidas).toContain('-00:29');
+    expect(lidas.join(' ')).not.toContain('?');
   });
 });
