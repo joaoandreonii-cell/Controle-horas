@@ -223,9 +223,13 @@ quem o receber no WhatsApp não tem como saber que havia um filtro.
 
 ### Tipografia
 
-Margem de 36pt nas laterais e 40pt em cima e embaixo: coluna útil de 348pt. Corpo 10pt,
-entrelinha 1,35. Números do herói 26pt bold. Data do dia 10,5pt bold, clientes 8,5pt, rótulo de
-seção 7,5pt em versal com `Tc` (espaçamento entre caracteres — o `tracking` da tela), rodapé 7pt.
+Margem de 36pt nas laterais e 40pt em cima e embaixo: coluna útil de 348pt. Números do herói
+24pt bold. Data do dia 10pt bold, clientes 8pt, tabelas de categoria 8,5pt, rótulo de seção 7pt
+em versal com `Tc` (espaçamento entre caracteres — o `tracking` da tela), rodapé 6,5pt.
+
+Estes são os corpos que foram ao aparelho e foram lidos sem zoom (ver "Verificado em execução",
+adiante). O rascunho desta spec pedia 26pt no herói e 7pt no rodapé; ficou em 24 e 6,5, e a
+leitura no celular confirmou que serve. Fica valendo o que existe, não o que o rascunho pediu.
 
 Um mês típico de 18 dias com três problemas ocupa 2 a 3 páginas.
 
@@ -282,6 +286,36 @@ As defesas são estruturais, não são avisos:
 2. Onde a tela se recusa a comparar, o botão não existe.
 3. O filtro da tela não atravessa para o documento.
 4. O escritor é verificado pelo leitor do próprio app.
+
+**Verificado em execução em 2026-08-04** (Task 9 do plano):
+
+- **Os quatro passos no aparelho, pelo dono do projeto.** Ele confirmou ter testado os quatro:
+  forçar a atualização do Service Worker antes de qualquer conclusão; conferir contra as fichas
+  reais de `exemplos_ficha_horas/`; ler o PDF no celular pelo WhatsApp; e comparar o
+  `controle_horas_v3` antes e depois de gerar. O registro aqui é **o relato dele**, não uma
+  transcrição de saída de comando — quem escreveu este bloco não estava no aparelho.
+- **A leitura sem zoom decidiu a tipografia.** O passo que pergunta "dá para ler sem dar zoom?"
+  foi respondido no celular, com os corpos que estão no código (herói 24pt, dia 10pt, tabelas
+  8,5pt, rodapé 6,5pt). É por isso que a seção "Tipografia" acima foi corrigida para descrever
+  esses valores em vez dos 26/7,5 do rascunho: o que foi lido e aprovado é o que está lá.
+- **Prova mecânica de que gerar não grava, nesta máquina.** Independente do aparelho, no Chrome
+  desta estação: o `localStorage` foi capturado antes e depois de clicar o botão e voltou
+  **byte a byte idêntico**, com `entries` e `settings` inalterados. A verificação foi montada
+  só para ler — o classificador bloqueia escrita em `localStorage` pelo console, e com razão.
+
+**Duas ressalvas honestas, para não sobrar crédito que não foi ganho:**
+
+Na primeira captura o `localStorage` cresceu de 1437 para 2083 bytes, e isso **não foi o botão**:
+era o `ensureYearsInitialized` que **já existia**, acrescentando os feriados-padrão de 2025 ao
+navegar — o mesmo write descrito na ressalva da spec 4. Conferido campo a campo: `entries` e
+`settings` byte-idênticos. A linha de base foi recapturada depois disso, e é essa que sustenta a
+frase acima; o clique foi medido isolado.
+
+**O filtro da tela não foi exercitado no aparelho.** Os chips de status só aparecem com mais de um
+status presente, e esta máquina tinha um lançamento só. Semear os dados exigiria escrever em
+`localStorage`, o que não foi feito. Que o filtro não atravessa para o PDF está garantido pela
+estrutura (`gerarRelatorio` não referencia `filtro`, `filtroAtivo` nem `listaDias`) e por teste
+automatizado — **não por observação no aparelho**.
 
 ## Teste
 
