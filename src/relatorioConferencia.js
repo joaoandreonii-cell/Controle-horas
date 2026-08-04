@@ -219,6 +219,24 @@ function cabecalhoMagro(doc, { refMonth }) {
   return TOPO + 26;
 }
 
+// O rodapé é a última coisa a ser desenhada porque o "N de M" precisa do M.
+function rodape(doc, { refMonth, tolerancia, emitidoEm }) {
+  const dir = doc.largura - doc.margem;
+  const y = doc.altura - 22;
+  const total = doc.paginas.length;
+  const nota = `horas+ · ${MONTH_FULL[refMonth.month - 1]} de ${refMonth.year} · gerado em `
+    + `${emitidoEm.getDate().toString().padStart(2, '0')}/`
+    + `${(emitidoEm.getMonth() + 1).toString().padStart(2, '0')}/${emitidoEm.getFullYear()}`
+    + ` · comparação por data civil, tolerância de ${tolerancia} min`;
+
+  for (let i = 0; i < total; i++) {
+    doc.irParaPagina(i);
+    doc.linha(doc.margem, y - 10, dir, y - 10, { cor: REGUA });
+    doc.texto(doc.margem, y, nota, { tamanho: 6.5, cor: FRACO });
+    doc.texto(dir, y, `${i + 1} de ${total}`, { tamanho: 6.5, cor: FRACO, alinhamento: 'dir' });
+  }
+}
+
 export function montarRelatorio({ resultado, totais, ficha, refMonth, tolerancia = 2, emitidoEm }) {
   const doc = criarDoc(PAGINA);
   let y = cabecalho(doc, { ficha, refMonth });
@@ -236,5 +254,17 @@ export function montarRelatorio({ resultado, totais, ficha, refMonth, tolerancia
     y = desenharDia(doc, diaConf, y);
   }
 
+  rodape(doc, { refMonth, tolerancia, emitidoEm: emitidoEm ?? new Date(0) });
+  doc.irParaPagina(0);
+
   return doc;
+}
+
+export function gerarPdfConferencia(args) {
+  const doc = montarRelatorio(args);
+  const { refMonth } = args;
+  return doc.bytes({
+    titulo: `Conferência da ficha — ${MONTH_FULL[refMonth.month - 1]} de ${refMonth.year}`,
+    emitidoEm: args.emitidoEm,
+  });
 }

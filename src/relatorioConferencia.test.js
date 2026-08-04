@@ -215,3 +215,54 @@ describe('paginação', () => {
     expect(t).toContain('13/11');
   });
 });
+
+import { gerarPdfConferencia } from './relatorioConferencia';
+import { extractPdfText } from './pdfText';
+
+describe('rodapé', () => {
+  const muitos = Array.from({ length: 40 }, (_, i) =>
+    dia(`2025-11-${String((i % 25) + 1).padStart(2, '0')}`, 'fecha',
+      { d50: 60, total: 60 }, { d50: 60, total: 60 }));
+
+  it('numera todas as páginas com o total certo', () => {
+    const doc = montar(muitos);
+    const m = doc.paginas.length;
+    expect(m).toBeGreaterThan(1);
+    for (let i = 0; i < m; i++) {
+      expect(textosDaPagina(doc, i)).toContain(`${i + 1} de ${m}`);
+    }
+  });
+
+  it('diz quando foi gerado e sob que tolerância', () => {
+    const t = textos(montar([dia('2025-11-10', 'fecha', { d50: 60, total: 60 }, { d50: 60, total: 60 })]));
+    expect(t.some((s) => s.includes('03/08/2026'))).toBe(true);
+    expect(t.some((s) => s.includes('tolerância de 2 min'))).toBe(true);
+    expect(t.some((s) => s.includes('data civil'))).toBe(true);
+  });
+});
+
+describe('gerarPdfConferencia', () => {
+  const args = {
+    resultado: [dia('2025-11-10', 'divergencia', { d50: 90, total: 90 }, { d50: 60, total: 60 }, ['ADAMI SA MADEIRAS'])],
+    ficha: fichaFalsa,
+    refMonth: { year: 2025, month: 11 },
+    tolerancia: 2,
+    emitidoEm: new Date(2026, 7, 3, 14, 30),
+  };
+
+  it('devolve bytes de um PDF', () => {
+    const bytes = gerarPdfConferencia({ ...args, totais: somaTotais(args.resultado) });
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(String.fromCharCode(...bytes.slice(0, 8))).toBe('%PDF-1.4');
+  });
+
+  it('o leitor do próprio app lê de volta o documento inteiro', async () => {
+    const bytes = gerarPdfConferencia({ ...args, totais: somaTotais(args.resultado) });
+    const lidas = await extractPdfText(bytes.buffer);
+    expect(lidas).toContain('CONFERÊNCIA DA FICHA');
+    expect(lidas).toContain('JOAO PACCE ANDREONI');
+    expect(lidas).toContain('ADAMI SA MADEIRAS');
+    expect(lidas).toContain('Divergência');
+    expect(lidas.some((s) => s.includes('A ficha reconhece'))).toBe(true);
+  });
+});
