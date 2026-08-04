@@ -271,6 +271,41 @@ describe('paginação', () => {
       }
     }
   });
+
+  // As asserções acima usam teto de 575.28 e um arranjo fixo de dias. Esta
+  // aperta as duas coisas:
+  //
+  // 1. 575.28 existe só para caber o próprio rodapé, que desenha em 573.28.
+  //    O limite de verdade do conteúdo é altura - RODAPE = 555.28.
+  // 2. Um arranjo fixo só exercita a quebra nos pontos que a aritmética dele
+  //    calha de produzir. Cada k empurra a sequência inteira para baixo, então
+  //    todo tipo de dia passa pela borda da página em algum k.
+  //
+  // Sobre o tamanho de erro que isto pega, medido e não suposto: o pior y de
+  // conteúdo nesta varredura é 531, contra o limite de 555.28 — 24pt de folga.
+  // A folga é do próprio desenho: desenharDia devolve y + RESPIRO_DIA (9pt) e
+  // tabelaCategorias devolve 12pt além da última linha, então o último glifo
+  // fica bem acima da altura contabilizada. Consequência: um erro pequeno em
+  // alturaDoDia (esquecer a linha de ausência, 12pt) é absorvido pela folga e
+  // NÃO é pego aqui — verificado plantando esse erro, a suíte inteira segue
+  // verde. E está certo que siga: com 24pt de folga aquilo não transborda
+  // nada, não é defeito visível. O que esta asserção pega é erro acima de
+  // ~24pt, contra ~44pt do teto de 575.28.
+  //
+  // O rodapé é desenhado por último, três operações por página (o filete e os
+  // dois textos), então slice(0, -3) separa conteúdo de rodapé sem depender
+  // do y — que é justamente o que está sendo medido.
+  it('nenhum deslocamento faz o conteúdo invadir a faixa do rodapé', () => {
+    for (let k = 0; k <= 20; k++) {
+      const doc = montar([...muitosDias(k), ...muitosDiasMistos(3)]);
+      for (const pagina of doc.paginas) {
+        for (const op of pagina.slice(0, -3)) {
+          const y = op.tipo === 'linha' ? op.y2 : (op.tipo === 'retangulo' ? op.y + op.h : op.y);
+          expect(y, `deslocamento k=${k}`).toBeLessThanOrEqual(595.28 - 40);
+        }
+      }
+    }
+  });
 });
 
 import { gerarPdfConferencia } from './relatorioConferencia';
