@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, Settings, X, Plus, Copy,
   Check, Trash2, Calendar, Sparkles, AlertTriangle, Wand2,
   Home, CalendarDays, Pencil, Download, Upload, Moon, FileSpreadsheet,
-  Clock, FileCheck, FileText, ChevronDown,
+  Clock, FileCheck, FileText, ChevronDown, Share2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Analytics } from '@vercel/analytics/react';
@@ -19,6 +19,7 @@ import {
   formatDuration, formatDurationLong,
   DAY_FULL, DAY_SHORT, MONTH_FULL, MONTH_SHORT,
 } from './format';
+import { gerarPdfConferencia, nomeArquivoRelatorio } from './relatorioConferencia';
 
 /* ═════════════════════════════════════════════════════════════════════════
    UTILITIES
@@ -2047,6 +2048,46 @@ function ConferenciaScreen({
   const tom = veredito ? CONF_TONS[veredito.tom] : null;
   const frase = veredito ? veredito.frase : null;
 
+  // Gerar e mandar. O documento sai do `resultado` INTEIRO, nunca de
+  // `listaDias`: um relatório que reflete em silêncio o filtro da tela mente
+  // por omissão, e quem receber no WhatsApp não tem como saber que havia um.
+  const [gerando, setGerando] = useState(false);
+
+  const gerarRelatorio = async () => {
+    if (!resultado || !resultado.length) return;
+    setGerando(true);
+    try {
+      const bytes = gerarPdfConferencia({
+        resultado, totais, ficha, refMonth, tolerancia: TOL, emitidoEm: new Date(),
+      });
+      const nome = nomeArquivoRelatorio(refMonth);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const file = new File([blob], nome, { type: 'application/pdf' });
+
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file] });
+          return;
+        } catch (e) {
+          // Cancelar não é erro: o usuário fechou a bandeja de propósito.
+          if (e?.name === 'AbortError') return;
+          // Qualquer outra falha cai no download, abaixo.
+        }
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nome;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setGerando(false);
+    }
+  };
+
   const catsHero = totais
     ? CONF_CATS.filter((c) => totais.app[c.k] > 0 || totais.ficha[c.k] > 0)
     : [];
@@ -2242,6 +2283,18 @@ function ConferenciaScreen({
                   </div>
                 </div>
               </section>
+
+              {/* Depois de ler o veredito, o gesto natural é mandar. Nesta
+                  altura o CTA de importar já colapsou no chip "Trocar", então
+                  este é o botão principal da tela. */}
+              <button
+                onClick={gerarRelatorio}
+                disabled={gerando}
+                className="w-full mb-6 py-3 rounded-xl bg-amber-500/10 border border-amber-700/40 hover:bg-amber-500/15 hover:border-amber-600/50 disabled:opacity-50 transition flex items-center justify-center gap-2 text-amber-200 text-sm font-medium"
+              >
+                <Share2 size={15} />
+                {gerando ? 'Gerando…' : 'Relatório em PDF'}
+              </button>
 
               {/* Dia a dia, com filtro por veredito */}
               <section>
