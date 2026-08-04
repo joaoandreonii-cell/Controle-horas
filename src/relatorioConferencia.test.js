@@ -94,3 +94,121 @@ describe('herói', () => {
     expect(t).not.toContain('100% noturno');
   });
 });
+
+describe('dia a dia', () => {
+  it('traz todos os dias, com data, dia da semana e veredito', () => {
+    const dias = [
+      dia('2025-11-10', 'fecha', { d50: 14, total: 14 }, { d50: 14, total: 14 }, ['ADAMI SA MADEIRAS']),
+      dia('2025-11-12', 'divergencia', { d50: 90, total: 90 }, { d50: 60, total: 60 }, ['TIROL']),
+    ];
+    const t = textos(montar(dias));
+    expect(t).toContain('10/11');
+    expect(t).toContain('seg');
+    expect(t).toContain('Fecha');
+    expect(t).toContain('12/11');
+    expect(t).toContain('qua');
+    expect(t).toContain('Divergência');
+    expect(t).toContain('ADAMI SA MADEIRAS');
+    expect(t).toContain('TIROL');
+  });
+
+  it('o dia que fecha não ganha mini-tabela', () => {
+    const doc = montar([dia('2025-11-10', 'fecha', { d50: 14, total: 14 }, { d50: 14, total: 14 })]);
+    // 'App' aparece uma vez no herói e uma no cabeçalho da tabela do herói — nunca três.
+    expect(textos(doc).filter((s) => s === 'App')).toHaveLength(2);
+  });
+
+  it('todo status diferente de fecha ganha mini-tabela', () => {
+    for (const status of ['divergencia', 'só na ficha', 'só no app']) {
+      const doc = montar([dia('2025-11-12', status, { d50: 90, total: 90 }, { d50: 60, total: 60 })]);
+      expect(textos(doc).filter((s) => s === 'App').length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('explica a ausência em vez de deixar uma coluna zerada parecendo erro', () => {
+    const soFicha = textos(montar([dia('2025-11-14', 'só na ficha', {}, { d50: 29, total: 29 })]));
+    expect(soFicha).toContain('sem lançamento no app');
+
+    const soApp = textos(montar([dia('2025-11-14', 'só no app', { d50: 29, total: 29 }, {})]));
+    expect(soApp).toContain('a ficha não tem este dia');
+  });
+
+  it('mostra o diferencial pequeno quando o dia fecha por tolerância', () => {
+    const t = textos(montar([dia('2025-11-10', 'fecha', { d50: 90, total: 90 }, { d50: 89, total: 89 })]));
+    expect(t).toContain('+00:01');
+  });
+
+  it('o rótulo do veredito e o diferencial não caem no mesmo lugar', () => {
+    // Os dois disputam a linha do dia. Encaixar ambos à direita os sobrepõe,
+    // e o leitor vê um borrão em vez de um número.
+    const ops = montar([dia('2025-11-10', 'fecha', { d50: 90, total: 90 }, { d50: 89, total: 89 })])
+      .paginas.flat();
+    const rotulo = ops.find((o) => o.str === 'Fecha');
+    const difer = ops.find((o) => o.str === '+00:01');
+    expect(rotulo.y).toBe(difer.y);
+    expect(rotulo.x).toBeLessThan(difer.x - 60);
+  });
+
+  it('lista os dois clientes de um dia', () => {
+    const t = textos(montar([
+      dia('2025-11-13', 'fecha', { d50: 150, total: 150 }, { d50: 150, total: 150 }, ['ADAMI SA MADEIRAS', 'TIROL']),
+    ]));
+    expect(t.join(' ')).toContain('ADAMI SA MADEIRAS');
+    expect(t.join(' ')).toContain('TIROL');
+  });
+
+  it('pinta o veredito com a cor dele', () => {
+    const doc = montar([dia('2025-11-12', 'divergencia', { d50: 90, total: 90 }, { d50: 60, total: 60 })]);
+    const rotulo = doc.paginas.flat().find((o) => o.str === 'Divergência');
+    expect(rotulo.cor).toEqual([0.745, 0.071, 0.235]);
+  });
+});
+
+describe('paginação', () => {
+  const muitosDias = (n) => Array.from({ length: n }, (_, i) =>
+    dia(`2025-11-${String((i % 25) + 1).padStart(2, '0')}`, 'fecha',
+      { d50: 60, total: 60 }, { d50: 60, total: 60 }, ['ADAMI SA MADEIRAS']));
+
+  it('um mês curto cabe numa página', () => {
+    expect(montar(muitosDias(3)).paginas).toHaveLength(1);
+  });
+
+  it('um mês cheio transborda para mais páginas', () => {
+    expect(montar(muitosDias(40)).paginas.length).toBeGreaterThan(1);
+  });
+
+  it('nenhum dia é partido entre páginas', () => {
+    const doc = montar(muitosDias(40));
+    // A data abre o bloco; se um bloco fosse partido, a mini-tabela ou os
+    // clientes daquele dia cairiam numa página sem a data correspondente.
+    for (const pagina of doc.paginas) {
+      const ops = pagina.filter((o) => o.tipo === 'texto');
+      const primeiraData = ops.findIndex((o) => /^\d{2}\/\d{2}$/.test(o.str));
+      const clientes = ops.findIndex((o) => o.str === 'ADAMI SA MADEIRAS');
+      if (clientes >= 0) expect(primeiraData).toBeGreaterThanOrEqual(0);
+      if (clientes >= 0) expect(primeiraData).toBeLessThan(clientes);
+    }
+  });
+
+  it('nada é desenhado abaixo da margem inferior', () => {
+    const doc = montar(muitosDias(40));
+    for (const pagina of doc.paginas) {
+      for (const op of pagina) {
+        const y = op.tipo === 'linha' ? op.y2 : (op.tipo === 'retangulo' ? op.y + op.h : op.y);
+        expect(y).toBeLessThanOrEqual(595.28 - 20);
+      }
+    }
+  });
+
+  it('o PDF ignora o filtro da tela: sai o resultado inteiro', () => {
+    const dias = [
+      dia('2025-11-10', 'fecha', { d50: 60, total: 60 }, { d50: 60, total: 60 }),
+      dia('2025-11-12', 'divergencia', { d50: 90, total: 90 }, { d50: 60, total: 60 }),
+      dia('2025-11-13', 'fecha', { d50: 60, total: 60 }, { d50: 60, total: 60 }),
+    ];
+    const t = textos(montar(dias));
+    expect(t).toContain('10/11');
+    expect(t).toContain('12/11');
+    expect(t).toContain('13/11');
+  });
+});

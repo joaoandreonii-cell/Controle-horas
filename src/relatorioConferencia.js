@@ -145,9 +145,96 @@ function heroi(doc, y, { resultado, totais, tolerancia }) {
   return y + 20;
 }
 
+const LINHA_DIA = 15;
+const LINHA_CLIENTE = 12;
+const LINHA_CAT = 12;
+const CABECALHO_CAT = 11;
+const RESPIRO_DIA = 9;
+
+// Medir antes de posicionar é o que permite nunca partir um dia entre páginas:
+// um dia cortado ao meio é exatamente o que faz alguém ler o número errado.
+function alturaDoDia(diaConf) {
+  const cats = CATS.filter((c) => diaConf.app[c.k] > 0 || diaConf.ficha[c.k] > 0);
+  let h = LINHA_DIA;
+  if (diaConf.clientes.length) h += LINHA_CLIENTE;
+  if (diaConf.status !== 'fecha') h += CABECALHO_CAT + cats.length * LINHA_CAT;
+  if (diaConf.status === 'só na ficha' || diaConf.status === 'só no app') h += LINHA_CLIENTE;
+  return h + RESPIRO_DIA;
+}
+
+const AUSENCIA = {
+  'só na ficha': 'sem lançamento no app',
+  'só no app': 'a ficha não tem este dia',
+};
+
+function desenharDia(doc, diaConf, y) {
+  const dir = doc.largura - doc.margem;
+  const v = VEREDITO[diaConf.status];
+  const [, mes, d] = diaConf.data.split('-');
+  const dow = DAY_SHORT[parseDate(diaConf.data).getDay()];
+
+  // A linha lê da esquerda para a direita: 12/11 qua Divergência … +00:30 01:30.
+  // O rótulo fica à esquerda, e não encostado no total, porque o diferencial
+  // também disputa o lado direito — encaixar os dois lá sobrepõe um no outro.
+  doc.texto(doc.margem, y, `${d}/${mes}`, { fonte: 'bold', tamanho: 10, cor: TINTA });
+  doc.texto(doc.margem + 32, y, dow, { tamanho: 8, cor: FRACO });
+  doc.texto(doc.margem + 56, y, v.rotulo, { tamanho: 7.5, cor: v.cor, tracking: 0.3 });
+
+  // 'Só na ficha' é o único caso em que o app não tem número nenhum: aí o
+  // total do cabeçalho é o da ficha, senão seria sempre 00:00.
+  const total = diaConf.status === 'só na ficha' ? diaConf.ficha.total : diaConf.app.total;
+  doc.texto(dir, y, formatDurationLong(total), { fonte: 'bold', tamanho: 10, cor: TINTA, alinhamento: 'dir' });
+
+  // O dia que fecha com um minuto de diferença ainda deve isso ao leitor —
+  // pequeno e cinza, sem virar alarme.
+  if (diaConf.status === 'fecha' && diaConf.diff.total !== 0) {
+    doc.texto(dir - 46, y, fmtDif(diaConf.diff.total), { tamanho: 7.5, cor: FRACO, alinhamento: 'dir' });
+  }
+  y += LINHA_DIA;
+
+  if (diaConf.clientes.length) {
+    const nomes = diaConf.clientes.map((c) => c.nome).join(' · ');
+    doc.texto(doc.margem, y, truncar(nomes, doc.largura - doc.margem * 2, 'normal', 8), { tamanho: 8, cor: FRACO });
+    y += LINHA_CLIENTE;
+  }
+
+  if (AUSENCIA[diaConf.status]) {
+    doc.texto(doc.margem, y, AUSENCIA[diaConf.status], { tamanho: 8, cor: v.cor });
+    y += LINHA_CLIENTE;
+  }
+
+  if (diaConf.status !== 'fecha') {
+    y = tabelaCategorias(doc, y, diaConf, { comTotal: false });
+  }
+
+  return y + RESPIRO_DIA;
+}
+
+function cabecalhoMagro(doc, { refMonth }) {
+  const dir = doc.largura - doc.margem;
+  doc.texto(doc.margem, TOPO, 'horas+', { fonte: 'bold', tamanho: 9, cor: FRACO });
+  doc.texto(dir, TOPO, `conferência · ${MONTH_FULL[refMonth.month - 1]} de ${refMonth.year}`,
+    { tamanho: 7, cor: FRACO, alinhamento: 'dir', tracking: 0.5 });
+  doc.linha(doc.margem, TOPO + 7, dir, TOPO + 7, { cor: REGUA });
+  return TOPO + 26;
+}
+
 export function montarRelatorio({ resultado, totais, ficha, refMonth, tolerancia = 2, emitidoEm }) {
   const doc = criarDoc(PAGINA);
   let y = cabecalho(doc, { ficha, refMonth });
   y = heroi(doc, y, { resultado, totais, tolerancia });
+
+  doc.texto(doc.margem, y, 'DIA A DIA', { tamanho: 7, cor: FRACO, tracking: 0.9 });
+  y += 16;
+
+  const limite = doc.altura - RODAPE;
+  for (const diaConf of resultado) {
+    if (y + alturaDoDia(diaConf) > limite) {
+      doc.novaPagina();
+      y = cabecalhoMagro(doc, { refMonth });
+    }
+    y = desenharDia(doc, diaConf, y);
+  }
+
   return doc;
 }
