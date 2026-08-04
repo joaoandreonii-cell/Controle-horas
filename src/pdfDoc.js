@@ -214,6 +214,20 @@ const dataPdf = (d) =>
   `D:${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`
   + `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
 
+// Text string do dicionário Info (o /Title, que o navegador mostra na aba): a
+// spec do PDF lê isso em PDFDocEncoding ou UTF-16BE-com-BOM — nunca no
+// WinAnsi do escaparPdf, que só vale dentro do conteúdo da página. As duas
+// codificações só divergem em 0x80-0x9F (onde mora o travessão, entre outros
+// da pontuação tipográfica), e é ali que um /Title escrito como string
+// literal WinAnsi sai torto na aba do navegador. codePointAt(0) por
+// caractere não cobre par substituto (um emoji fora do BMP) — não é caso
+// que este projeto escreve em título.
+const textoPdf = (s) => {
+  let hex = 'FEFF';
+  for (const ch of s) hex += ch.codePointAt(0).toString(16).padStart(4, '0').toUpperCase();
+  return `<${hex}>`;
+};
+
 function serializar(doc, { titulo = '', emitidoEm = new Date(0) } = {}) {
   const { largura, altura, paginas } = doc;
 
@@ -229,7 +243,11 @@ function serializar(doc, { titulo = '', emitidoEm = new Date(0) } = {}) {
   corpos[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
   corpos[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
   corpos[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Symbol >>';
-  corpos[6] = `<< /Title (${escaparPdf(titulo)}) /Producer (horas+) /Creator (horas+) /CreationDate (${dataPdf(emitidoEm)}) >>`;
+  // /Producer e /Creator são só 'horas+' — ASCII puro, idêntico nas duas
+  // codificações — e ficam como string literal comum. /CreationDate não é
+  // text string, é date string (PDF 7.9.4): sempre literal, o encoding do
+  // conteúdo não entra aqui.
+  corpos[6] = `<< /Title ${textoPdf(titulo)} /Producer (horas+) /Creator (horas+) /CreationDate (${dataPdf(emitidoEm)}) >>`;
 
   paginas.forEach((ops, i) => {
     corpos[idPagina(i)] =

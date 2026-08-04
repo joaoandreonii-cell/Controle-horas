@@ -201,6 +201,20 @@ describe('criarDoc — bytes', () => {
     const s = latin1(doc.bytes({ titulo: 't', emitidoEm }));
     expect(s).toContain(`1 0 0 1 36 ${(595.28 - 40).toFixed(2)} Tm`);
   });
+
+  it('o /Title sai em UTF-16BE com BOM — o travessão não pode virar Scaron', () => {
+    // /Title é text string do dicionário Info, que os leitores decodificam em
+    // PDFDocEncoding (ou UTF-16BE), nunca no WinAnsi do conteúdo da página.
+    // As duas só divergem em 0x80-0x9F: lá, 0x97 é travessão no WinAnsi e
+    // Scaron no PDFDocEncoding — é essa faixa que o brief pegou no Chrome.
+    const doc = doc5();
+    const s = latin1(doc.bytes({ titulo: 'Conferência da ficha — novembro de 2025', emitidoEm }));
+    const m = s.match(/\/Title <([0-9A-F]+)>/);
+    expect(m).not.toBeNull();
+    expect(m[1].startsWith('FEFF')).toBe(true);
+    expect(m[1]).toContain('2014'); // o travessão U+2014, em UTF-16BE
+    expect(m[1]).not.toContain('0097'); // o byte WinAnsi do travessão, errado aqui
+  });
 });
 
 describe('ida e volta — o leitor do app lê o que o escritor escreveu', () => {
